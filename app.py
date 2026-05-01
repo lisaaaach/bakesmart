@@ -827,7 +827,7 @@ def get_llm_substitution_recommendations(
 # STREAMLIT APP
 # ============================================================
 
-st.set_page_config(page_title="BakeSmart", layout="wide")
+st.set_page_config(page_title="WhiskWise", layout="wide")
 
 # ============================================================
 # FIGMA-INSPIRED DESIGN STYLE
@@ -1066,7 +1066,7 @@ st.markdown(
 <div class="bakesmart-nav">
     <div class="bakesmart-logo">
         {logo_html}
-        <span>BakeSmart</span>
+        <span>WhiskWise</span>
     </div>
     <div class="nav-links">
         <span>Home</span>
