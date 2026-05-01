@@ -90,6 +90,22 @@ def format_nutrients(n):
         return ", ".join([f"{k}: {v}" for k, v in n.items()])
     return str(n)
 
+def checkbox_grid(title, options, columns=3, key_prefix="checkbox_grid"):
+    st.write(f"**{title}**")
+
+    selected = []
+    cols = st.columns(columns)
+
+    for i, option in enumerate(options):
+        with cols[i % columns]:
+            checked = st.checkbox(
+                option.title(),
+                key=f"{key_prefix}_{option.replace(' ', '_')}"
+            )
+            if checked:
+                selected.append(option)
+
+    return selected
 
 def load_table_if_exists(conn, table_name):
     try:
@@ -498,7 +514,7 @@ def get_api_key(provider=LLM_PROVIDER):
     return None
 
 
-def build_llm_substitution_prompt(recipe_name, ingredients, allergies=None, nutrition_goal=None):
+def build_llm_substitution_prompt(recipe_name, ingredients, allergies=None, diet_preferences=None, nutrition_goals=None):
     """
     Builds the prompt we send to the LLM.
 
@@ -523,13 +539,16 @@ Original ingredients:
 User allergies:
 {allergies or []}
 
-User nutrition goal:
-{nutrition_goal or "None"}
+User diet preferences:
+{diet_preferences or []}
+
+User nutrition goals:
+{nutrition_goals or []}
 
 Please recommend ingredient substitutions and amounts.
 
-Only recommend substitutions when they are useful for the user's allergy or nutrition goal.
-For baking recipes, try to preserve texture, sweetness, moisture, and structure.
+Only recommend substitutions when they are useful for the user's allergies, diet preferences, or nutrition goals.
+For baking recipes, try to preserve texture, sweetness, moisture, flavor, and structure.
 
 Return ONLY valid JSON in this exact format:
 
@@ -620,13 +639,12 @@ def call_llm_for_substitutions(prompt, provider=LLM_PROVIDER):
         return []
 
 
-def get_llm_substitution_recommendations(recipe, allergies=None, nutrition_goal=None):
-    """
-    Connects the selected recipe to the LLM.
-
-    This function is the main function we call inside the Streamlit app.
-    """
-
+def get_llm_substitution_recommendations(
+    recipe,
+    allergies=None,
+    diet_preferences=None,
+    nutrition_goals=None
+):
     if recipe is None:
         return []
 
@@ -634,7 +652,8 @@ def get_llm_substitution_recommendations(recipe, allergies=None, nutrition_goal=
         recipe_name=recipe.get("recipe_name"),
         ingredients=recipe.get("ingredients_combined"),
         allergies=allergies,
-        nutrition_goal=nutrition_goal
+        diet_preferences=diet_preferences,
+        nutrition_goals=nutrition_goals
     )
 
     return call_llm_for_substitutions(prompt)
@@ -1070,52 +1089,40 @@ if "top_matches" in st.session_state:
     </div>
     """, unsafe_allow_html=True)
 
-    for idx, row in top_matches.iterrows():
-        image_html = ""
-        image_url = row.get("image_url")
+for idx, row in top_matches.iterrows():
+    with st.container(border=True):
+        img_col, info_col = st.columns([1, 2])
 
-        if pd.notna(image_url) and image_url:
-            image_html = f"""
-            <img src="{image_url}" 
-                 width="240" 
-                 style="border-radius:20px; margin-bottom:16px; box-shadow:0 8px 22px rgba(23,33,60,0.12);">
-            """
-        else:
-            image_html = """
-            <div style="
-                width:240px;
-                height:160px;
-                border-radius:20px;
-                background:#FFF1E8;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                color:#B76D3F;
-                font-weight:800;
-                margin-bottom:16px;">
-                No Image Available
-            </div>
-            """
+        with img_col:
+            image_url = row.get("image_url")
 
-        matched_ingredients = row.get("matched_ingredients", [])
-        if isinstance(matched_ingredients, list):
-            matched_text = ", ".join(matched_ingredients)
-        else:
-            matched_text = str(matched_ingredients)
+            if isinstance(image_url, str) and image_url.strip():
+                st.image(image_url, use_container_width=True)
+            else:
+                st.info("No image available")
 
-        st.markdown(f"""
-        <div class="recipe-card">
-            <div class="recipe-title">{idx}. {row.get('recipe_name', 'N/A')}</div>
-            {image_html}
-            <div>
-                <span class="match-badge">{row.get('match_percentage', 'N/A')}% Match</span>
-                <span class="badge">{row.get('source_table', 'N/A')}</span>
-            </div>
-            <p><b>Matched Ingredients:</b> {matched_text}</p>
-            <p><b>All Ingredients:</b> {row.get('ingredients_combined', 'N/A')}</p>
-            <p><b>Nutrients:</b> {format_nutrients(row.get('nutrients'))}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        with info_col:
+            st.markdown(f"### {idx}. {row.get('recipe_name', 'N/A')}")
+
+            st.write(f"**Match Percentage:** {row.get('match_percentage', 'N/A')}%")
+            st.write(f"**Source:** {row.get('source_table', 'N/A')}")
+
+            matched_ingredients = row.get("matched_ingredients", [])
+
+            if isinstance(matched_ingredients, list) and matched_ingredients:
+                st.write("**Matched Ingredients:** " + ", ".join(matched_ingredients))
+            else:
+                st.write("**Matched Ingredients:** N/A")
+
+            with st.expander("View recipe preview"):
+                st.write("**All Ingredients:**")
+                st.write(row.get("ingredients_combined", "N/A"))
+
+                st.write("**Nutrients:**")
+                st.write(format_nutrients(row.get("nutrients")))
+
+                if row.get("source_url"):
+                    st.markdown(f"[Open original recipe]({row.get('source_url')})")
 
     st.markdown("""
     <div class="section-card">
@@ -1187,59 +1194,43 @@ if "selected_recipe" in st.session_state:
     </div>
     """, unsafe_allow_html=True)
 
-    recipe_image_html = ""
+    st.markdown("""
+<div class="section-card">
+    <h2>Recipe Details</h2>
+    <p class="info-note">
+        Review the selected recipe before adding allergy, diet, or nutrition preferences.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-    if selected_recipe.get("image_url"):
-        recipe_image_html = f"""
-        <img src="{selected_recipe.get('image_url')}" 
-             width="320" 
-             style="border-radius:22px; margin:18px 0; box-shadow:0 10px 28px rgba(23,33,60,0.14);">
-        """
-    else:
-        recipe_image_html = """
-        <div style="
-            width:320px;
-            height:210px;
-            border-radius:22px;
-            background:#FFF1E8;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            color:#B76D3F;
-            font-weight:800;
-            margin:18px 0;">
-            No Image Available
-        </div>
-        """
+with st.container(border=True):
+    detail_img_col, detail_text_col = st.columns([1, 2])
 
-    source_url_html = ""
+    with detail_img_col:
+        if selected_recipe.get("image_url"):
+            st.image(selected_recipe.get("image_url"), use_container_width=True)
+        else:
+            st.info("No image available")
 
-    if selected_recipe.get("source_url"):
-        source_url_html = f"""
-        <p>
-            <b>Recipe URL:</b> 
-            <a href="{selected_recipe.get('source_url')}" target="_blank">
-                Open original recipe
-            </a>
-        </p>
-        """
+    with detail_text_col:
+        st.markdown(f"## {selected_recipe.get('recipe_name', 'N/A')}")
+        st.write(f"**Source:** {selected_recipe.get('source_table', 'N/A')}")
 
-    st.markdown(f"""
-    <div class="white-card">
-        <h2>{selected_recipe.get("recipe_name", "N/A")}</h2>
-        {recipe_image_html}
-        <p><span class="badge">{selected_recipe.get("source_table", "N/A")}</span></p>
-        <p><b>Ingredients:</b> {selected_recipe.get("ingredients_combined", "N/A")}</p>
-        <p><b>Nutrients:</b> {format_nutrients(selected_recipe.get("nutrients"))}</p>
-        <p><b>Instructions:</b> {selected_recipe.get("instructions", "N/A")}</p>
-        {source_url_html}
-    </div>
-    """, unsafe_allow_html=True)
+        if selected_recipe.get("source_url"):
+            st.markdown(f"[Open original recipe]({selected_recipe.get('source_url')})")
 
+with st.expander("Ingredients", expanded=True):
+    st.write(selected_recipe.get("ingredients_combined", "N/A"))
 
-    # ========================================================
-    # CUSTOMIZATION AFTER RECIPE SELECTION
-    # ========================================================
+with st.expander("Nutrients"):
+    st.write(format_nutrients(selected_recipe.get("nutrients")))
+
+with st.expander("Instructions"):
+    st.write(selected_recipe.get("instructions", "N/A"))
+
+# ========================================================
+# CUSTOMIZATION AFTER RECIPE SELECTION
+# ========================================================
 
     st.markdown("""
     <div class="section-card">
@@ -1251,20 +1242,26 @@ if "selected_recipe" in st.session_state:
     </div>
     """, unsafe_allow_html=True)
 
-    selected_allergies = st.multiselect(
+    selected_allergies = checkbox_grid(
         "Choose allergies:",
         ["dairy", "gluten", "egg", "peanut", "tree nuts", "soy"],
-        key="selected_allergies_after_recipe"
+        columns=3,
+        key_prefix="allergy"
     )
 
-    nutrition_goal = st.selectbox(
-        "Choose one nutrition goal:",
-        ["None", "low sugar", "low fat", "high protein", "low calorie"],
-        key="nutrition_goal_after_recipe"
-    )
+selected_diets = checkbox_grid(
+    "Choose diet preferences:",
+    ["vegetarian", "vegan", "dairy free", "gluten free", "egg free", "nut free"],
+    columns=3,
+    key_prefix="diet"
+)
 
-    nutrition_goal = None if nutrition_goal == "None" else nutrition_goal
-
+selected_nutrition_goals = checkbox_grid(
+    "Choose nutrition goals:",
+    ["low sugar", "low fat", "high protein", "low calorie"],
+    columns=4,
+    key_prefix="nutrition"
+)
 
     # Allergy source detection
     all_allergy_hits = detect_possible_allergies(
@@ -1272,10 +1269,13 @@ if "selected_recipe" in st.session_state:
         df_allergy
     )
 
-    filtered_allergy_hits = filter_allergy_hits_for_user(
-        all_allergy_hits,
-        selected_allergies
-    )
+    if selected_allergies:
+        if not filtered_allergy_hits.empty:
+            st.dataframe(filtered_allergy_hits, use_container_width=True)
+        else:
+            st.write("No allergy-source rows matched your selected allergy input.")
+    else:
+        st.info("No allergy selected. Allergy filtering is skipped.")
 
     st.markdown("""
     <div class="section-card">
@@ -1297,48 +1297,76 @@ if "selected_recipe" in st.session_state:
 
     # LLM substitution section
     st.markdown("""
-    <div class="section-card">
-        <h2>Customized Ingredient Substitutions</h2>
-        <p class="info-note">
-            Generate substitutions only when you selected an allergy or nutrition goal.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+<div class="section-card">
+    <h2>Customized Ingredient Substitutions</h2>
+    <p class="info-note">
+        Generate a customized version of the selected recipe based on your allergy, diet, and nutrition preferences.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-    if selected_allergies or nutrition_goal:
-        if st.button("Generate Customized Substitutions"):
-            llm_substitutions = get_llm_substitution_recommendations(
-                recipe=selected_recipe,
-                allergies=selected_allergies,
-                nutrition_goal=nutrition_goal
-            )
+has_customization = (
+    selected_allergies
+    or selected_diets
+    or selected_nutrition_goals
+)
 
-            if llm_substitutions:
-                for item in llm_substitutions:
-                    with st.container(border=True):
-                        st.write(
-                            "**Original ingredient:**",
-                            item.get("original_ingredient", "N/A")
-                        )
-                        st.write(
-                            "**Recommended substitute:**",
-                            item.get("substitute_ingredient", "N/A")
-                        )
-                        st.write(
-                            "**Recommended amount:**",
-                            item.get("recommended_amount", "N/A")
-                        )
-                        st.write(
-                            "**Reason:**",
-                            item.get("reason", "N/A")
-                        )
-            else:
-                st.write("No LLM substitution recommendations were generated.")
-    else:
-        st.info(
-            "No allergy or nutrition goal selected. "
-            "Substitution recommendation is skipped."
+if has_customization:
+    if st.button("Generate Customized Substitutions"):
+        llm_substitutions = get_llm_substitution_recommendations(
+            recipe=selected_recipe,
+            allergies=selected_allergies,
+            diet_preferences=selected_diets,
+            nutrition_goals=selected_nutrition_goals
         )
+
+        if llm_substitutions:
+            with st.container(border=True):
+                img_col, text_col = st.columns([1, 2])
+
+                with img_col:
+                    if selected_recipe.get("image_url"):
+                        st.image(selected_recipe.get("image_url"), use_container_width=True)
+                    else:
+                        st.info("No image available")
+
+                with text_col:
+                    st.markdown(
+                        f"### Customized Version of {selected_recipe.get('recipe_name', 'This Recipe')}"
+                    )
+
+                    selected_preferences = (
+                        selected_allergies
+                        + selected_diets
+                        + selected_nutrition_goals
+                    )
+
+                    st.write("**Based on your preferences:**")
+                    st.write(", ".join(selected_preferences))
+
+                    st.write(
+                        "Below are the suggested ingredient substitutions. "
+                        "The image is kept from the original recipe because the customized recipe is based on this selected dessert."
+                    )
+
+            for i, item in enumerate(llm_substitutions, start=1):
+                original = item.get("original_ingredient", "N/A")
+                substitute = item.get("substitute_ingredient", "N/A")
+                amount = item.get("recommended_amount", "N/A")
+                reason = item.get("reason", "N/A")
+
+                with st.container(border=True):
+                    st.markdown(f"#### Substitute {i}: {original} → {substitute}")
+                    st.write(f"**Recommended Amount:** {amount}")
+                    st.write(f"**Reason:** {reason}")
+
+        else:
+            st.write("No substitution recommendations were generated.")
+else:
+    st.info(
+        "No allergy, diet preference, or nutrition goal selected. "
+        "Substitution recommendation is skipped."
+    )
 
 
     # ML section
