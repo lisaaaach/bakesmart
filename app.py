@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import requests
 import os
+import base64
 
 # ============================================================
 # CONFIG
@@ -20,6 +21,14 @@ ALLERGY_TABLE = "ingredient_allergy_reference_final"
 ML_TABLE = "ml_recipe_clusters"
 USER_SUB_TABLE = "user_ingredient_substitutions"
 
+ICON_FILE = "ww_icon.png"
+
+def get_base64_image(image_path):
+    try:
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode()
+    except Exception:
+        return None
 # ============================================================
 # BASIC HELPERS
 # ============================================================
@@ -948,15 +957,11 @@ details {
 }
 
 .logo-icon {
-    width: 46px;
-    height: 46px;
-    background: #D28A5C;
-    color: white;
+    width: 54px;
+    height: 54px;
     border-radius: 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
+    object-fit: cover;
+    box-shadow: 0 8px 20px rgba(23, 33, 60, 0.16);
 }
 
 .nav-links {
@@ -1049,11 +1054,18 @@ details {
 # FIGMA-STYLE HEADER
 # ============================================================
 
+icon_base64 = get_base64_image(ICON_FILE)
+
+if icon_base64:
+    logo_html = f'<img class="logo-icon" src="data:image/png;base64,{icon_base64}" alt="WhiskWise logo">'
+else:
+    logo_html = '<span class="logo-icon">🍰</span>'
+
 st.markdown(
-    """
+    f"""
 <div class="bakesmart-nav">
     <div class="bakesmart-logo">
-        <span class="logo-icon">🍰</span>
+        {logo_html}
         <span>BakeSmart</span>
     </div>
     <div class="nav-links">
