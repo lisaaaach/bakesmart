@@ -5,6 +5,8 @@ import json
 import re
 import matplotlib.pyplot as plt
 from datetime import datetime
+import requests
+import os
 
 # ============================================================
 # CONFIG
@@ -460,6 +462,182 @@ def store_user_substitution(conn, original_ingredient, substitute_ingredient, am
 
     conn.commit()
 
+# ============================================================
+# LLM SUBSTITUTION RECOMMENDATION BACKEND
+# ============================================================
+
+LLM_PROVIDER = "openai"
+
+MODEL_NAMES = {
+    "openai": "gpt-4o-mini"
+}
+
+
+def get_api_key(provider=LLM_PROVIDER):
+    """
+    Gets the API key for the selected LLM provider.
+
+    In VS Code / Streamlit, we can use either:
+    1. Streamlit secrets: .streamlit/secrets.toml
+    2. Environment variables
+
+    This keeps the key hidden and avoids hardcoding it in the project.
+    """
+
+    if provider == "openai":
+        # First try Streamlit secrets
+        try:
+            if "OPENAI_API_KEY" in st.secrets:
+                return st.secrets["OPENAI_API_KEY"]
+        except Exception:
+            pass
+
+        # Then try environment variable
+        return os.getenv("OPENAI_API_KEY")
+
+    return None
+
+
+def build_llm_substitution_prompt(recipe_name, ingredients, allergies=None, nutrition_goal=None):
+    """
+    Builds the prompt we send to the LLM.
+
+    The LLM receives:
+    - recipe name
+    - original ingredients
+    - user allergies
+    - nutrition goal
+
+    It returns substitute ingredients and recommended amounts.
+    """
+
+    return f"""
+You are helping with a baking recipe substitution app.
+
+Recipe name:
+{recipe_name}
+
+Original ingredients:
+{ingredients}
+
+User allergies:
+{allergies or []}
+
+User nutrition goal:
+{nutrition_goal or "None"}
+
+Please recommend ingredient substitutions and amounts.
+
+Only recommend substitutions when they are useful for the user's allergy or nutrition goal.
+For baking recipes, try to preserve texture, sweetness, moisture, and structure.
+
+Return ONLY valid JSON in this exact format:
+
+[
+  {{
+    "original_ingredient": "milk",
+    "substitute_ingredient": "almond milk",
+    "recommended_amount": "same amount as original milk",
+    "reason": "This is dairy-free and keeps a similar liquid texture."
+  }}
+]
+"""
+
+
+def call_llm_for_substitutions(prompt, provider=LLM_PROVIDER):
+    """
+    Calls the selected LLM API.
+
+    If the API key is missing, the API fails, or the model does not return valid JSON,
+    the function returns an empty list instead of crashing the app.
+    """
+
+    api_key = get_api_key(provider)
+    model = MODEL_NAMES.get(provider)
+
+    if not api_key:
+        st.warning("LLM API key is missing. Add OPENAI_API_KEY to Streamlit secrets or environment variables.")
+        return []
+
+    try:
+        if provider == "openai":
+            url = "https://api.openai.com/v1/chat/completions"
+
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+
+            data = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful baking substitution assistant. Return valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": 0.2
+            }
+
+            response = requests.post(
+                url,
+                headers=headers,
+                json=data,
+                timeout=30
+            )
+
+            if response.status_code != 200:
+                st.error("LLM API call failed.")
+                st.write("Status code:", response.status_code)
+                st.write("Response:", response.text)
+                return []
+
+            response_json = response.json()
+            llm_text = response_json["choices"][0]["message"]["content"]
+
+        else:
+            st.warning("Only OpenAI is connected in this VS Code version.")
+            return []
+
+        # Clean response in case the LLM wraps JSON in markdown
+        llm_text = llm_text.replace("```json", "").replace("```", "").strip()
+
+        return json.loads(llm_text)
+
+    except json.JSONDecodeError:
+        st.error("The LLM response was not valid JSON.")
+        st.write("Raw LLM response:")
+        st.write(llm_text)
+        return []
+
+    except Exception as e:
+        st.error("LLM substitution failed.")
+        st.write(e)
+        return []
+
+
+def get_llm_substitution_recommendations(recipe, allergies=None, nutrition_goal=None):
+    """
+    Connects the selected recipe to the LLM.
+
+    This function is the main function we call inside the Streamlit app.
+    """
+
+    if recipe is None:
+        return []
+
+    prompt = build_llm_substitution_prompt(
+        recipe_name=recipe.get("recipe_name"),
+        ingredients=recipe.get("ingredients_combined"),
+        allergies=allergies,
+        nutrition_goal=nutrition_goal
+    )
+
+    return call_llm_for_substitutions(prompt)
 
 # ============================================================
 # STREAMLIT APP
@@ -623,6 +801,24 @@ if "top_matches" in st.session_state:
             st.dataframe(filtered_allergy_hits, use_container_width=True)
         else:
             st.write("No allergy-source rows matched your specific allergy input.")
+                    # LLM substitution section
+        st.subheader("LLM Recommended Ingredient Substitutions")
+
+        llm_substitutions = get_llm_substitution_recommendations(
+            recipe=selected_recipe,
+            allergies=selected_allergies,
+            nutrition_goal=nutrition_goal
+        )
+
+        if llm_substitutions:
+            for item in llm_substitutions:
+                with st.container(border=True):
+                    st.write("Original ingredient:", item.get("original_ingredient", "N/A"))
+                    st.write("LLM recommended substitute:", item.get("substitute_ingredient", "N/A"))
+                    st.write("Recommended amount:", item.get("recommended_amount", "N/A"))
+                    st.write("Reason:", item.get("reason", "N/A"))
+        else:
+            st.write("No LLM substitution recommendations were generated.")
 
         # ML section
         ml_result = get_ml_recipe_recommendation(
