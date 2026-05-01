@@ -951,20 +951,25 @@ st.sidebar.header("Project Data")
 st.sidebar.write(f"Total recipes loaded: {len(recipes_master)}")
 
 # ============================================================
-# INPUT SECTION
+# INPUT SECTION — ORIGINAL NOTEBOOK STYLE FLOW
 # ============================================================
 
 st.markdown("""
 <div class="white-card">
     <h2>Build Your Recipe</h2>
-    <p class="info-note">Select your available ingredients, allergies, and nutrition goals.</p>
+    <p class="info-note">
+        Start by selecting the ingredients you already have. 
+        Recipe recommendations will be generated first, and customization will come after you choose a recipe.
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("""
 <div class="section-card">
     <h3>Step 1: Select Common Ingredients</h3>
-    <p class="info-note">Choose ingredients you already have at home.</p>
+    <p class="info-note">
+        Choose the common baking ingredients you already have at home.
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -978,14 +983,23 @@ common_ingredients = [
     "strawberry", "lemon"
 ]
 
-selected_common_ingredients = st.multiselect(
-    "Choose ingredients you have:",
-    common_ingredients
-)
+# Original notebook style: checkbox-based ingredient selection
+selected_common_ingredients = []
+
+cols = st.columns(4)
+
+for i, ingredient in enumerate(common_ingredients):
+    with cols[i % 4]:
+        checked = st.checkbox(
+            ingredient.title(),
+            key=f"ingredient_checkbox_{ingredient.replace(' ', '_')}"
+        )
+        if checked:
+            selected_common_ingredients.append(ingredient)
 
 extra_ingredients_raw = st.text_area(
-    "Add other ingredients separated by commas:",
-    placeholder="matcha powder, coconut milk"
+    "Add other ingredients you have, separated by commas:",
+    placeholder="matcha powder, coconut milk, blueberries"
 )
 
 extra_ingredients = [
@@ -994,48 +1008,54 @@ extra_ingredients = [
 
 user_ingredients = selected_common_ingredients + extra_ingredients
 
-st.markdown("""
-<div class="section-card">
-    <h3>Step 2: Select Allergies or Preferences</h3>
-    <p class="info-note">Choose any dietary restrictions or nutrition goals.</p>
-</div>
-""", unsafe_allow_html=True)
+if user_ingredients:
+    selected_ingredients_html = "".join(
+        [f'<span class="badge">{ing}</span>' for ing in user_ingredients]
+    )
 
-selected_allergies = st.multiselect(
-    "Choose allergies:",
-    ["dairy", "gluten", "egg", "peanut", "tree nuts", "soy"]
-)
+    st.markdown(f"""
+    <div class="section-card">
+        <h3>Your Selected Ingredients</h3>
+        <p>{selected_ingredients_html}</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-nutrition_goal = st.selectbox(
-    "Choose one nutrition goal:",
-    ["None", "low sugar", "low fat", "high protein", "low calorie"]
-)
-
-nutrition_goal = None if nutrition_goal == "None" else nutrition_goal
 
 # ============================================================
-# RECIPE RECOMMENDATION
+# RECIPE RECOMMENDATION — RECIPES FIRST, NO ALLERGY YET
 # ============================================================
 
 st.markdown("""
 <div class="section-card">
-    <h3>Step 3: Find Recipes</h3>
-    <p class="info-note">Recipes will be ranked by ingredient match percentage and enhanced with allergy and ML-based recommendations.</p>
+    <h3>Step 2: Find Recipe Recommendations</h3>
+    <p class="info-note">
+        Recipes will be ranked by how well they match the ingredients you selected.
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
 if st.button("Find Recipes"):
-    top_matches = find_recipes_by_ingredients(
-        recipes_master,
-        user_ingredients,
-        top_n=5
-    )
-
-    if top_matches.empty:
-        st.warning("No matching recipes were found.")
+    if not user_ingredients:
+        st.warning("Please select or enter at least one ingredient first.")
     else:
-        st.session_state["top_matches"] = top_matches
-        st.success("Top matching recipes found!")
+        top_matches = find_recipes_by_ingredients(
+            recipes_master,
+            user_ingredients,
+            top_n=5
+        )
+
+        if top_matches.empty:
+            st.warning("No matching recipes were found.")
+        else:
+            st.session_state["top_matches"] = top_matches
+
+            # Clear previous selected recipe when user searches again
+            st.session_state.pop("selected_recipe", None)
+            st.session_state.pop("selected_recipe_id", None)
+            st.session_state.pop("selected_recipe_source", None)
+
+            st.success("Top matching recipes found!")
+
 
 if "top_matches" in st.session_state:
     top_matches = st.session_state["top_matches"]
@@ -1044,7 +1064,8 @@ if "top_matches" in st.session_state:
     <div class="section-card">
         <h2>Top Matching Recipes</h2>
         <p class="info-note">
-            These recipes are ranked by how well they match the ingredients you selected.
+            These recipes are shown first, just like the original notebook version.
+            Each result includes the recipe image when available.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1056,8 +1077,24 @@ if "top_matches" in st.session_state:
         if pd.notna(image_url) and image_url:
             image_html = f"""
             <img src="{image_url}" 
-                 width="230" 
+                 width="240" 
                  style="border-radius:20px; margin-bottom:16px; box-shadow:0 8px 22px rgba(23,33,60,0.12);">
+            """
+        else:
+            image_html = """
+            <div style="
+                width:240px;
+                height:160px;
+                border-radius:20px;
+                background:#FFF1E8;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                color:#B76D3F;
+                font-weight:800;
+                margin-bottom:16px;">
+                No Image Available
+            </div>
             """
 
         matched_ingredients = row.get("matched_ingredients", [])
@@ -1079,6 +1116,15 @@ if "top_matches" in st.session_state:
             <p><b>Nutrients:</b> {format_nutrients(row.get('nutrients'))}</p>
         </div>
         """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="section-card">
+        <h3>Step 3: Choose One Recipe</h3>
+        <p class="info-note">
+            Select one recipe to open its full detail page.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
     recipe_options = {
         f"{idx}. {row['recipe_name']}": idx
@@ -1116,116 +1162,216 @@ if "top_matches" in st.session_state:
                 "source_table": selected_row.get("source_table")
             }
 
-                # Figma-style recipe detail card
-        recipe_image_html = ""
-        if selected_recipe.get("image_url"):
-            recipe_image_html = f"""
-            <img src="{selected_recipe.get('image_url')}" 
-                 width="300" 
-                 style="border-radius:22px; margin:18px 0; box-shadow:0 10px 28px rgba(23,33,60,0.14);">
-            """
+        # Store selected recipe in session state so it does not disappear after rerun
+        st.session_state["selected_recipe"] = selected_recipe
+        st.session_state["selected_recipe_id"] = selected_id
+        st.session_state["selected_recipe_source"] = selected_source
 
-        source_url_html = ""
-        if selected_recipe.get("source_url"):
-            source_url_html = f"""
-            <p>
-                <b>Recipe URL:</b> 
-                <a href="{selected_recipe.get('source_url')}" target="_blank">Open original recipe</a>
-            </p>
-            """
+        st.success(f"You selected: {selected_recipe.get('recipe_name', 'N/A')}")
 
-        st.markdown(f"""
-        <div class="white-card">
-            <h2>{selected_recipe.get("recipe_name", "N/A")}</h2>
-            {recipe_image_html}
-            <p><span class="badge">{selected_recipe.get("source_table", "N/A")}</span></p>
-            <p><b>Ingredients:</b> {selected_recipe.get("ingredients_combined", "N/A")}</p>
-            <p><b>Nutrients:</b> {format_nutrients(selected_recipe.get("nutrients"))}</p>
-            <p><b>Instructions:</b> {selected_recipe.get("instructions", "N/A")}</p>
-            {source_url_html}
+
+# ============================================================
+# RECIPE DETAIL PAGE
+# ============================================================
+
+if "selected_recipe" in st.session_state:
+    selected_recipe = st.session_state["selected_recipe"]
+    selected_id = st.session_state.get("selected_recipe_id")
+
+    st.markdown("""
+    <div class="section-card">
+        <h2>Recipe Details</h2>
+        <p class="info-note">
+            Review the full recipe before adding allergy or nutrition customization.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    recipe_image_html = ""
+
+    if selected_recipe.get("image_url"):
+        recipe_image_html = f"""
+        <img src="{selected_recipe.get('image_url')}" 
+             width="320" 
+             style="border-radius:22px; margin:18px 0; box-shadow:0 10px 28px rgba(23,33,60,0.14);">
+        """
+    else:
+        recipe_image_html = """
+        <div style="
+            width:320px;
+            height:210px;
+            border-radius:22px;
+            background:#FFF1E8;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:#B76D3F;
+            font-weight:800;
+            margin:18px 0;">
+            No Image Available
         </div>
-        """, unsafe_allow_html=True)
+        """
 
-        # Allergy section
-        all_allergy_hits = detect_possible_allergies(
-            selected_recipe.get("ingredients_clean", []),
-            df_allergy
-        )
+    source_url_html = ""
 
-        filtered_allergy_hits = filter_allergy_hits_for_user(
-            all_allergy_hits,
-            selected_allergies
-        )
+    if selected_recipe.get("source_url"):
+        source_url_html = f"""
+        <p>
+            <b>Recipe URL:</b> 
+            <a href="{selected_recipe.get('source_url')}" target="_blank">
+                Open original recipe
+            </a>
+        </p>
+        """
 
-        st.markdown("""
-        <div class="section-card">
-            <h2>Relevant Allergy Sources Based on Your Input</h2>
-            <p class="info-note">
-                These are ingredients that may relate to the allergy preferences you selected.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="white-card">
+        <h2>{selected_recipe.get("recipe_name", "N/A")}</h2>
+        {recipe_image_html}
+        <p><span class="badge">{selected_recipe.get("source_table", "N/A")}</span></p>
+        <p><b>Ingredients:</b> {selected_recipe.get("ingredients_combined", "N/A")}</p>
+        <p><b>Nutrients:</b> {format_nutrients(selected_recipe.get("nutrients"))}</p>
+        <p><b>Instructions:</b> {selected_recipe.get("instructions", "N/A")}</p>
+        {source_url_html}
+    </div>
+    """, unsafe_allow_html=True)
 
+
+    # ========================================================
+    # CUSTOMIZATION AFTER RECIPE SELECTION
+    # ========================================================
+
+    st.markdown("""
+    <div class="section-card">
+        <h3>Step 4: Customize This Recipe</h3>
+        <p class="info-note">
+            Now choose allergy or nutrition preferences. 
+            This happens after recipe selection, so the original recommendation logic stays the same.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    selected_allergies = st.multiselect(
+        "Choose allergies:",
+        ["dairy", "gluten", "egg", "peanut", "tree nuts", "soy"],
+        key="selected_allergies_after_recipe"
+    )
+
+    nutrition_goal = st.selectbox(
+        "Choose one nutrition goal:",
+        ["None", "low sugar", "low fat", "high protein", "low calorie"],
+        key="nutrition_goal_after_recipe"
+    )
+
+    nutrition_goal = None if nutrition_goal == "None" else nutrition_goal
+
+
+    # Allergy source detection
+    all_allergy_hits = detect_possible_allergies(
+        selected_recipe.get("ingredients_clean", []),
+        df_allergy
+    )
+
+    filtered_allergy_hits = filter_allergy_hits_for_user(
+        all_allergy_hits,
+        selected_allergies
+    )
+
+    st.markdown("""
+    <div class="section-card">
+        <h2>Relevant Allergy Sources Based on Your Input</h2>
+        <p class="info-note">
+            These results only show allergy sources related to your selected allergies.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if selected_allergies:
         if not filtered_allergy_hits.empty:
             st.dataframe(filtered_allergy_hits, use_container_width=True)
         else:
             st.write("No allergy-source rows matched your specific allergy input.")
-                    # LLM substitution section
-        st.markdown("""
-        <div class="section-card">
-            <h2>LLM Recommended Ingredient Substitutions</h2>
-            <p class="info-note">
-                This section uses an LLM to suggest possible ingredient substitutions and adjusted amounts.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+    else:
+        st.info("No allergy selected. Allergy filtering is skipped.")
 
-        llm_substitutions = get_llm_substitution_recommendations(
-            recipe=selected_recipe,
-            allergies=selected_allergies,
-            nutrition_goal=nutrition_goal
-        )
 
-        if llm_substitutions:
-            for item in llm_substitutions:
-                with st.container(border=True):
-                    st.write("Original ingredient:", item.get("original_ingredient", "N/A"))
-                    st.write("LLM recommended substitute:", item.get("substitute_ingredient", "N/A"))
-                    st.write("Recommended amount:", item.get("recommended_amount", "N/A"))
-                    st.write("Reason:", item.get("reason", "N/A"))
-        else:
-            st.write("No LLM substitution recommendations were generated.")
+    # LLM substitution section
+    st.markdown("""
+    <div class="section-card">
+        <h2>Customized Ingredient Substitutions</h2>
+        <p class="info-note">
+            Generate substitutions only when you selected an allergy or nutrition goal.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-        # ML section
-        ml_result = get_ml_recipe_recommendation(
-            conn,
-            selected_id,
-            top_n=3
-        )
-
-        st.markdown("""
-        <div class="section-card">
-            <h2>Machine Learning Recipe Recommendation</h2>
-            <p class="info-note">
-                This section uses recipe clustering to identify the recipe type and recommend similar recipes.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if ml_result and ml_result.get("cluster_name"):
-            st.write("Recipe Type:", ml_result.get("cluster_name"))
-            st.write(
-                "This recipe type is identified by machine learning based on ingredient similarity."
+    if selected_allergies or nutrition_goal:
+        if st.button("Generate Customized Substitutions"):
+            llm_substitutions = get_llm_substitution_recommendations(
+                recipe=selected_recipe,
+                allergies=selected_allergies,
+                nutrition_goal=nutrition_goal
             )
 
-            similar_recipes = ml_result.get("similar_recipes")
-            if similar_recipes is not None and not similar_recipes.empty:
-                st.write("Similar recipes from the same or closest recipe group:")
-                st.dataframe(similar_recipes, use_container_width=True)
+            if llm_substitutions:
+                for item in llm_substitutions:
+                    with st.container(border=True):
+                        st.write(
+                            "**Original ingredient:**",
+                            item.get("original_ingredient", "N/A")
+                        )
+                        st.write(
+                            "**Recommended substitute:**",
+                            item.get("substitute_ingredient", "N/A")
+                        )
+                        st.write(
+                            "**Recommended amount:**",
+                            item.get("recommended_amount", "N/A")
+                        )
+                        st.write(
+                            "**Reason:**",
+                            item.get("reason", "N/A")
+                        )
             else:
-                st.write("No similar recipes were found.")
+                st.write("No LLM substitution recommendations were generated.")
+    else:
+        st.info(
+            "No allergy or nutrition goal selected. "
+            "Substitution recommendation is skipped."
+        )
+
+
+    # ML section
+    st.markdown("""
+    <div class="section-card">
+        <h2>Machine Learning Recipe Recommendation</h2>
+        <p class="info-note">
+            This section uses recipe clustering to identify the recipe type and recommend similar recipes.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    ml_result = get_ml_recipe_recommendation(
+        conn,
+        selected_id,
+        top_n=3
+    )
+
+    if ml_result and ml_result.get("cluster_name"):
+        st.write("**Recipe Type:**", ml_result.get("cluster_name"))
+        st.write(
+            "This recipe type is identified by machine learning based on ingredient similarity."
+        )
+
+        similar_recipes = ml_result.get("similar_recipes")
+
+        if similar_recipes is not None and not similar_recipes.empty:
+            st.write("Similar recipes from the same or closest recipe group:")
+            st.dataframe(similar_recipes, use_container_width=True)
         else:
-            st.write("Machine learning cluster information is not available for this recipe.")
+            st.write("No similar recipes were found.")
+    else:
+        st.write("Machine learning cluster information is not available for this recipe.")
 
 # ============================================================
 # USER SUBSTITUTION INPUT
@@ -1233,7 +1379,7 @@ if "top_matches" in st.session_state:
 
 st.markdown("""
 <div class="section-card">
-    <h3>Step 4: Share Your Substitution Experience</h3>
+    <h3>Step 5: Share Your Substitution Experience</h3>
     <p class="info-note">
         Help future users by sharing what substitute ingredient you used and how much you used.
     </p>
