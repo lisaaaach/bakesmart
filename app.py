@@ -359,27 +359,125 @@ def detect_possible_allergies(recipe_ingredients, allergy_df):
     return result[keep_cols].drop_duplicates().reset_index(drop=True)
 
 
-def filter_allergy_hits_for_user(allergy_hits, selected_allergies):
-    if allergy_hits is None or allergy_hits.empty:
+def get_database_substitution_recommendations(
+    all_allergy_hits,
+    selected_allergies=None,
+    selected_diets=None,
+    selected_nutrition_goals=None
+):
+    """
+    Builds database-based substitution recommendations from the allergy/reference table.
+
+    This is not LLM-based.
+    It uses possible_substitutes / substitute / substitutes columns from the database
+    when those columns exist.
+    """
+
+    if all_allergy_hits is None or all_allergy_hits.empty:
         return pd.DataFrame()
 
-    if not selected_allergies:
+    selected_allergies = selected_allergies or []
+    selected_diets = selected_diets or []
+    selected_nutrition_goals = selected_nutrition_goals or []
+
+    # Convert user preferences into searchable keywords
+    preference_terms = []
+
+    for item in selected_allergies + selected_nutrition_goals:
+        norm = normalize_text(item)
+        if norm:
+            preference_terms.append(norm)
+
+    # Map diet preference names to likely database terms
+    diet_term_map = {
+        "vegan": ["dairy", "egg", "milk", "butter", "cream", "cheese"],
+        "vegetarian": [],
+        "dairy free": ["dairy", "milk", "butter", "cream", "cheese"],
+        "gluten free": ["gluten", "flour", "wheat"],
+        "egg free": ["egg"],
+        "nut free": ["peanut", "tree nuts", "almond", "walnut", "pecan"]
+    }
+
+    for diet in selected_diets:
+        diet_norm = normalize_text(diet)
+        if diet_norm in diet_term_map:
+            preference_terms.extend(diet_term_map[diet_norm])
+        elif diet_norm:
+            preference_terms.append(diet_norm)
+
+    preference_terms = list(dict.fromkeys([x for x in preference_terms if x]))
+
+    # If the user selected no preference, do not show database substitution yet
+    if not preference_terms:
         return pd.DataFrame()
 
-    selected_allergies = [normalize_text(x) for x in selected_allergies if normalize_text(x)]
+    rows = []
 
-    filtered_rows = []
-
-    for _, row in allergy_hits.iterrows():
+    for _, row in all_allergy_hits.iterrows():
         row_text = " ".join([str(x).lower() for x in row.values])
-        keep = any(a in row_text for a in selected_allergies)
-        if keep:
-            filtered_rows.append(row.to_dict())
 
-    if not filtered_rows:
+        # Keep rows related to the selected allergy/diet/nutrition preference
+        if any(term in row_text for term in preference_terms):
+            rows.append(row.to_dict())
+
+    if not rows:
         return pd.DataFrame()
 
-    return pd.DataFrame(filtered_rows).drop_duplicates().reset_index(drop=True)
+    result = pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
+
+    return result
+
+def get_community_substitution_recommendations(conn, recipe_ingredients):
+    """
+    Finds previous user-submitted substitution records that match ingredients
+    in the selected recipe.
+    """
+
+    try:
+        df = pd.read_sql(f"SELECT * FROM {USER_SUB_TABLE}", conn)
+    except:
+        return pd.DataFrame()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    recipe_ingredients_norm = normalize_ingredient_list(recipe_ingredients)
+
+    if not recipe_ingredients_norm:
+        return pd.DataFrame()
+
+    df = df.copy()
+    df["original_norm"] = df["original_ingredient"].apply(normalize_text)
+
+    matched_rows = []
+
+    for ing in recipe_ingredients_norm:
+        hits = df[
+            df["original_norm"].apply(
+                lambda x: (x in ing or ing in x) if isinstance(x, str) else False
+            )
+        ].copy()
+
+        if not hits.empty:
+            hits["matched_recipe_ingredient"] = ing
+            matched_rows.append(hits)
+
+    if not matched_rows:
+        return pd.DataFrame()
+
+    result = pd.concat(matched_rows, ignore_index=True).drop_duplicates()
+
+    keep_cols = [
+        "matched_recipe_ingredient",
+        "original_ingredient",
+        "substitute_ingredient",
+        "amount_grams",
+        "created_at"
+    ]
+
+    keep_cols = [c for c in keep_cols if c in result.columns]
+
+    return result[keep_cols].reset_index(drop=True)
 
 
 # ============================================================
@@ -1252,34 +1350,106 @@ if "selected_recipe" in st.session_state:
         key_prefix="nutrition"
     )
 
-    # Allergy source detection
-    all_allergy_hits = detect_possible_allergies(
-        selected_recipe.get("ingredients_clean", []),
-        df_allergy
-    )
+# ========================================================
+# DATABASE + ALLERGY + COMMUNITY SUBSTITUTION RESULTS
+# ========================================================
 
-    filtered_allergy_hits = filter_allergy_hits_for_user(
-        all_allergy_hits,
-        selected_allergies
-    )
+all_allergy_hits = detect_possible_allergies(
+    selected_recipe.get("ingredients_clean", []),
+    df_allergy
+)
 
-    st.markdown("""
-    <div class="section-card">
-        <h2>Relevant Allergy Sources Based on Your Input</h2>
-        <p class="info-note">
-            These results only show allergy sources related to your selected allergies.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+filtered_allergy_hits = filter_allergy_hits_for_user(
+    all_allergy_hits,
+    selected_allergies
+)
 
-    if selected_allergies:
-        if not filtered_allergy_hits.empty:
-            st.dataframe(filtered_allergy_hits, use_container_width=True)
-        else:
-            st.write("No allergy-source rows matched your selected allergy input.")
+database_substitutions = get_database_substitution_recommendations(
+    all_allergy_hits=all_allergy_hits,
+    selected_allergies=selected_allergies,
+    selected_diets=selected_diets,
+    selected_nutrition_goals=selected_nutrition_goals
+)
+
+community_substitutions = get_community_substitution_recommendations(
+    conn=conn,
+    recipe_ingredients=selected_recipe.get("ingredients_clean", [])
+)
+
+
+# -----------------------------
+# 1. Allergy sources
+# -----------------------------
+
+st.markdown("""
+<div class="section-card">
+    <h2>Relevant Allergy Sources</h2>
+    <p class="info-note">
+        These are possible allergy-related ingredients found in the selected recipe.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+if selected_allergies:
+    if not filtered_allergy_hits.empty:
+        st.dataframe(filtered_allergy_hits, use_container_width=True)
     else:
-        st.info("No allergy selected. Allergy filtering is skipped.")
+        st.info(
+            "No allergy-source rows matched your selected allergy input. "
+            "This only means the allergy reference table did not find a direct match."
+        )
+else:
+    st.info("No allergy selected. Allergy filtering is skipped.")
 
+
+# -----------------------------
+# 2. Database-based substitutions
+# -----------------------------
+
+st.markdown("""
+<div class="section-card">
+    <h2>Database-Based Substitution Suggestions</h2>
+    <p class="info-note">
+        These suggestions come from the project's structured allergy/substitution database, not from the LLM.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+if not database_substitutions.empty:
+    for i, row in database_substitutions.iterrows():
+        with st.container(border=True):
+            st.markdown(f"#### Database Suggestion {i + 1}")
+
+            if "recipe_ingredient" in row:
+                st.write("**Recipe Ingredient:**", row.get("recipe_ingredient", "N/A"))
+
+            for col in database_substitutions.columns:
+                if col != "recipe_ingredient":
+                    st.write(f"**{col}:**", row.get(col, "N/A"))
+else:
+    st.info(
+        "No database-based substitution matched the selected allergy, diet, or nutrition preferences. "
+        "This does not mean there is no possible substitute; it only means the current reference table does not contain a matched rule."
+    )
+
+
+# -----------------------------
+# 3. Community-based substitutions
+# -----------------------------
+
+st.markdown("""
+<div class="section-card">
+    <h2>Community-Based Substitution Suggestions</h2>
+    <p class="info-note">
+        These suggestions come from previous user-submitted substitution experiences stored in the backend.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+if not community_substitutions.empty:
+    st.dataframe(community_substitutions, use_container_width=True)
+else:
+    st.info("No community substitution records matched this recipe yet.")
     # LLM substitution section
     st.markdown("""
     <div class="section-card">
@@ -1353,12 +1523,16 @@ if "selected_recipe" in st.session_state:
             "Substitution recommendation is skipped."
         )
 
-    # ML section
+    # ========================================================
+    # MACHINE LEARNING RECOMMENDATION
+    # ========================================================
+
     st.markdown("""
     <div class="section-card">
         <h2>Machine Learning Recipe Recommendation</h2>
         <p class="info-note">
-            This section uses recipe clustering to identify the recipe type and recommend similar recipes.
+            This section uses recipe clustering to identify the selected recipe type 
+            and recommend similar recipes from the same or closest cluster.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1371,6 +1545,7 @@ if "selected_recipe" in st.session_state:
 
     if ml_result and ml_result.get("cluster_name"):
         st.write("**Recipe Type:**", ml_result.get("cluster_name"))
+
         st.write(
             "This recipe type is identified by machine learning based on ingredient similarity."
         )
@@ -1378,12 +1553,12 @@ if "selected_recipe" in st.session_state:
         similar_recipes = ml_result.get("similar_recipes")
 
         if similar_recipes is not None and not similar_recipes.empty:
-            st.write("Similar recipes from the same or closest recipe group:")
+            st.write("**Similar recipes from the same or closest recipe group:**")
             st.dataframe(similar_recipes, use_container_width=True)
         else:
-            st.write("No similar recipes were found.")
+            st.info("No similar recipes were found.")
     else:
-        st.write("Machine learning cluster information is not available for this recipe.")
+        st.info("Machine learning cluster information is not available for this recipe.")
 
 # ============================================================
 # USER SUBSTITUTION INPUT
