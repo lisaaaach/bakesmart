@@ -1040,7 +1040,7 @@ if st.button("Find Recipes"):
 if "top_matches" in st.session_state:
     top_matches = st.session_state["top_matches"]
 
-        st.markdown("""
+    st.markdown("""
     <div class="section-card">
         <h2>Top Matching Recipes</h2>
         <p class="info-note">
