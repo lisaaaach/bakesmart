@@ -645,8 +645,297 @@ def get_llm_substitution_recommendations(recipe, allergies=None, nutrition_goal=
 
 st.set_page_config(page_title="BakeSmart", layout="wide")
 
-st.title("BakeSmart")
-st.write("An ingredient-based and allergy-aware baking recommendation platform.")
+# ============================================================
+# FIGMA-INSPIRED DESIGN STYLE
+# ============================================================
+
+st.markdown("""
+<style>
+/* Whole app background */
+.stApp {
+    background: linear-gradient(135deg, #FFF7ED 0%, #FFE4E6 100%);
+    color: #17213C;
+}
+
+/* Hide Streamlit default top spacing */
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 4rem;
+    max-width: 1200px;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #FFF7ED;
+    border-right: 1px solid #F2D4C4;
+}
+
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] p {
+    color: #17213C;
+}
+
+/* Main text */
+h1 {
+    color: #17213C;
+    font-size: 52px !important;
+    font-weight: 850 !important;
+    letter-spacing: -1px;
+}
+
+h2 {
+    color: #17213C;
+    font-size: 34px !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.5px;
+}
+
+h3 {
+    color: #17213C;
+    font-size: 24px !important;
+    font-weight: 750 !important;
+}
+
+p, label, span, div {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Streamlit buttons */
+.stButton > button {
+    background-color: #17213C;
+    color: white;
+    border-radius: 999px;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    font-weight: 700;
+    font-size: 16px;
+    box-shadow: 0 8px 20px rgba(23, 33, 60, 0.18);
+    transition: 0.2s ease;
+}
+
+.stButton > button:hover {
+    background-color: #D28A5C;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(210, 138, 92, 0.28);
+}
+
+/* Inputs */
+textarea, input {
+    border-radius: 18px !important;
+    border: 1px solid #E8CBB8 !important;
+    background-color: #FFFFFF !important;
+}
+
+div[data-testid="stTextInput"] input,
+div[data-testid="stTextArea"] textarea,
+div[data-testid="stNumberInput"] input {
+    border-radius: 18px !important;
+    padding: 12px 16px !important;
+}
+
+/* Select boxes and multiselect */
+div[data-testid="stMultiSelect"],
+div[data-testid="stSelectbox"] {
+    background-color: white;
+    border-radius: 18px;
+}
+
+/* Dataframes */
+div[data-testid="stDataFrame"] {
+    background-color: white;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(23, 33, 60, 0.08);
+    padding: 8px;
+}
+
+/* Expander */
+details {
+    background-color: rgba(255, 255, 255, 0.75) !important;
+    border-radius: 20px !important;
+    border: 1px solid #F2D4C4 !important;
+    box-shadow: 0 8px 24px rgba(23, 33, 60, 0.06);
+}
+
+/* Custom reusable classes */
+.bakesmart-nav {
+    background: rgba(255, 255, 255, 0.78);
+    border: 1px solid #F2D4C4;
+    border-radius: 24px;
+    padding: 18px 26px;
+    margin-bottom: 34px;
+    box-shadow: 0 10px 30px rgba(23, 33, 60, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.bakesmart-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 28px;
+    font-weight: 850;
+    color: #17213C;
+}
+
+.logo-icon {
+    width: 46px;
+    height: 46px;
+    background: #D28A5C;
+    color: white;
+    border-radius: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+.nav-links {
+    display: flex;
+    gap: 28px;
+    font-weight: 700;
+    color: #17213C;
+}
+
+.hero-section {
+    text-align: center;
+    padding: 42px 20px 28px 20px;
+}
+
+.hero-title {
+    font-size: 58px;
+    line-height: 1.05;
+    font-weight: 900;
+    color: #17213C;
+    margin-bottom: 16px;
+    letter-spacing: -1.5px;
+}
+
+.hero-subtitle {
+    font-size: 20px;
+    color: #44516A;
+    max-width: 760px;
+    margin: 0 auto 24px auto;
+}
+
+.white-card {
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid #F2D4C4;
+    border-radius: 30px;
+    padding: 34px;
+    margin: 28px 0;
+    box-shadow: 0 18px 45px rgba(23, 33, 60, 0.10);
+}
+
+.section-card {
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid #F2D4C4;
+    border-radius: 28px;
+    padding: 30px;
+    margin: 26px 0;
+    box-shadow: 0 14px 34px rgba(23, 33, 60, 0.08);
+}
+
+.recipe-card {
+    background: #FFFFFF;
+    border: 1px solid #F2D4C4;
+    border-radius: 26px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 12px 34px rgba(23, 33, 60, 0.10);
+}
+
+.recipe-title {
+    font-size: 25px;
+    font-weight: 800;
+    color: #17213C;
+    margin-bottom: 10px;
+}
+
+.badge {
+    display: inline-block;
+    background: #FFF1E8;
+    color: #B76D3F;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+    margin-right: 8px;
+    margin-bottom: 8px;
+}
+
+.match-badge {
+    display: inline-block;
+    background: #17213C;
+    color: white;
+    padding: 6px 13px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.pill-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+    margin-bottom: 20px;
+}
+
+.pill-item {
+    background: #F7F2EF;
+    border-radius: 18px;
+    padding: 14px 18px;
+    text-align: center;
+    font-weight: 700;
+    color: #17213C;
+    border: 1px solid transparent;
+}
+
+.info-note {
+    color: #44516A;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.small-muted {
+    color: #64748B;
+    font-size: 14px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# FIGMA-STYLE HEADER
+# ============================================================
+
+st.markdown("""
+<div class="bakesmart-nav">
+    <div class="bakesmart-logo">
+        <span class="logo-icon">🍰</span>
+        <span>BakeSmart</span>
+    </div>
+    <div class="nav-links">
+        <span>Home</span>
+        <span>Build Recipe</span>
+        <span>Analytics</span>
+        <span>Community</span>
+        <span>About</span>
+    </div>
+</div>
+
+<div class="hero-section">
+    <div class="hero-title">Bake smarter with what you already have.</div>
+    <div class="hero-subtitle">
+        Find baking recipes based on your ingredients, allergies, nutrition goals,
+        and machine-learning-based recipe similarity.
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 conn = sqlite3.connect(DB_FILE_NAME, check_same_thread=False)
 
@@ -665,7 +954,19 @@ st.sidebar.write(f"Total recipes loaded: {len(recipes_master)}")
 # INPUT SECTION
 # ============================================================
 
-st.header("Step 1: Select Common Ingredients")
+st.markdown("""
+<div class="white-card">
+    <h2>Build Your Recipe</h2>
+    <p class="info-note">Select your available ingredients, allergies, and nutrition goals.</p>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class="section-card">
+    <h3>Step 1: Select Common Ingredients</h3>
+    <p class="info-note">Choose ingredients you already have at home.</p>
+</div>
+""", unsafe_allow_html=True)
 
 common_ingredients = [
     "flour", "all purpose flour", "sugar", "brown sugar",
@@ -693,7 +994,12 @@ extra_ingredients = [
 
 user_ingredients = selected_common_ingredients + extra_ingredients
 
-st.header("Step 2: Select Allergies or Preferences")
+st.markdown("""
+<div class="section-card">
+    <h3>Step 2: Select Allergies or Preferences</h3>
+    <p class="info-note">Choose any dietary restrictions or nutrition goals.</p>
+</div>
+""", unsafe_allow_html=True)
 
 selected_allergies = st.multiselect(
     "Choose allergies:",
@@ -711,7 +1017,12 @@ nutrition_goal = None if nutrition_goal == "None" else nutrition_goal
 # RECIPE RECOMMENDATION
 # ============================================================
 
-st.header("Step 3: Find Recipes")
+st.markdown("""
+<div class="section-card">
+    <h3>Step 3: Find Recipes</h3>
+    <p class="info-note">Recipes will be ranked by ingredient match percentage and enhanced with allergy and ML-based recommendations.</p>
+</div>
+""", unsafe_allow_html=True)
 
 if st.button("Find Recipes"):
     top_matches = find_recipes_by_ingredients(
@@ -848,7 +1159,14 @@ if "top_matches" in st.session_state:
 # USER SUBSTITUTION INPUT
 # ============================================================
 
-st.header("Step 4: Share Your Substitution Experience")
+st.markdown("""
+<div class="section-card">
+    <h3>Step 4: Share Your Substitution Experience</h3>
+    <p class="info-note">
+        Help future users by sharing what substitute ingredient you used and how much you used.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 st.write(
     "If you changed an ingredient, you can submit what substitute you used. "
