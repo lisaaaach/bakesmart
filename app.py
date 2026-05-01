@@ -1040,11 +1040,45 @@ if st.button("Find Recipes"):
 if "top_matches" in st.session_state:
     top_matches = st.session_state["top_matches"]
 
-    st.subheader("Top Matching Recipes")
-    st.dataframe(
-        top_matches[["recipe_name", "match_percentage", "matched_ingredients", "source_table"]],
-        use_container_width=True
-    )
+        st.markdown("""
+    <div class="section-card">
+        <h2>Top Matching Recipes</h2>
+        <p class="info-note">
+            These recipes are ranked by how well they match the ingredients you selected.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    for idx, row in top_matches.iterrows():
+        image_html = ""
+        image_url = row.get("image_url")
+
+        if pd.notna(image_url) and image_url:
+            image_html = f"""
+            <img src="{image_url}" 
+                 width="230" 
+                 style="border-radius:20px; margin-bottom:16px; box-shadow:0 8px 22px rgba(23,33,60,0.12);">
+            """
+
+        matched_ingredients = row.get("matched_ingredients", [])
+        if isinstance(matched_ingredients, list):
+            matched_text = ", ".join(matched_ingredients)
+        else:
+            matched_text = str(matched_ingredients)
+
+        st.markdown(f"""
+        <div class="recipe-card">
+            <div class="recipe-title">{idx}. {row.get('recipe_name', 'N/A')}</div>
+            {image_html}
+            <div>
+                <span class="match-badge">{row.get('match_percentage', 'N/A')}% Match</span>
+                <span class="badge">{row.get('source_table', 'N/A')}</span>
+            </div>
+            <p><b>Matched Ingredients:</b> {matched_text}</p>
+            <p><b>All Ingredients:</b> {row.get('ingredients_combined', 'N/A')}</p>
+            <p><b>Nutrients:</b> {format_nutrients(row.get('nutrients'))}</p>
+        </div>
+        """, unsafe_allow_html=True)
 
     recipe_options = {
         f"{idx}. {row['recipe_name']}": idx
@@ -1082,18 +1116,35 @@ if "top_matches" in st.session_state:
                 "source_table": selected_row.get("source_table")
             }
 
-        st.subheader(selected_recipe.get("recipe_name", "N/A"))
-
+                # Figma-style recipe detail card
+        recipe_image_html = ""
         if selected_recipe.get("image_url"):
-            st.image(selected_recipe.get("image_url"), width=300)
+            recipe_image_html = f"""
+            <img src="{selected_recipe.get('image_url')}" 
+                 width="300" 
+                 style="border-radius:22px; margin:18px 0; box-shadow:0 10px 28px rgba(23,33,60,0.14);">
+            """
 
-        st.write("Source:", selected_recipe.get("source_table", "N/A"))
-        st.write("Ingredients:", selected_recipe.get("ingredients_combined", "N/A"))
-        st.write("Nutrients:", selected_recipe.get("nutrients", "N/A"))
-        st.write("Instructions:", selected_recipe.get("instructions", "N/A"))
-
+        source_url_html = ""
         if selected_recipe.get("source_url"):
-            st.markdown(f"[Recipe Source Link]({selected_recipe.get('source_url')})")
+            source_url_html = f"""
+            <p>
+                <b>Recipe URL:</b> 
+                <a href="{selected_recipe.get('source_url')}" target="_blank">Open original recipe</a>
+            </p>
+            """
+
+        st.markdown(f"""
+        <div class="white-card">
+            <h2>{selected_recipe.get("recipe_name", "N/A")}</h2>
+            {recipe_image_html}
+            <p><span class="badge">{selected_recipe.get("source_table", "N/A")}</span></p>
+            <p><b>Ingredients:</b> {selected_recipe.get("ingredients_combined", "N/A")}</p>
+            <p><b>Nutrients:</b> {format_nutrients(selected_recipe.get("nutrients"))}</p>
+            <p><b>Instructions:</b> {selected_recipe.get("instructions", "N/A")}</p>
+            {source_url_html}
+        </div>
+        """, unsafe_allow_html=True)
 
         # Allergy section
         all_allergy_hits = detect_possible_allergies(
@@ -1106,14 +1157,28 @@ if "top_matches" in st.session_state:
             selected_allergies
         )
 
-        st.subheader("Relevant Allergy Sources Based on Your Input")
+        st.markdown("""
+        <div class="section-card">
+            <h2>Relevant Allergy Sources Based on Your Input</h2>
+            <p class="info-note">
+                These are ingredients that may relate to the allergy preferences you selected.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
         if not filtered_allergy_hits.empty:
             st.dataframe(filtered_allergy_hits, use_container_width=True)
         else:
             st.write("No allergy-source rows matched your specific allergy input.")
                     # LLM substitution section
-        st.subheader("LLM Recommended Ingredient Substitutions")
+        st.markdown("""
+        <div class="section-card">
+            <h2>LLM Recommended Ingredient Substitutions</h2>
+            <p class="info-note">
+                This section uses an LLM to suggest possible ingredient substitutions and adjusted amounts.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
         llm_substitutions = get_llm_substitution_recommendations(
             recipe=selected_recipe,
@@ -1138,7 +1203,14 @@ if "top_matches" in st.session_state:
             top_n=3
         )
 
-        st.subheader("Machine Learning Recipe Recommendation")
+        st.markdown("""
+        <div class="section-card">
+            <h2>Machine Learning Recipe Recommendation</h2>
+            <p class="info-note">
+                This section uses recipe clustering to identify the recipe type and recommend similar recipes.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
         if ml_result and ml_result.get("cluster_name"):
             st.write("Recipe Type:", ml_result.get("cluster_name"))
