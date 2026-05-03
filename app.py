@@ -551,6 +551,156 @@ def get_community_substitution_recommendations(conn, recipe_ingredients):
 
     return result[keep_cols].reset_index(drop=True)
 
+def split_substitute_values(value):
+    """
+    Splits substitute values from database cells into a clean list.
+    Handles strings, JSON lists, comma-separated values, and pipe-separated values.
+    """
+
+    if value is None:
+        return []
+
+    try:
+        if pd.isna(value):
+            return []
+    except:
+        pass
+
+    if isinstance(value, list):
+        raw_values = value
+    else:
+        value_str = str(value).strip()
+
+        if not value_str or value_str.lower() in ["nan", "none", "n/a"]:
+            return []
+
+        parsed = safe_json_loads(value_str, None)
+
+        if isinstance(parsed, list):
+            raw_values = parsed
+        elif isinstance(parsed, dict):
+            raw_values = list(parsed.values())
+        else:
+            raw_values = re.split(r"\s*\|\s*|\s*;\s*|\s*,\s*", value_str)
+
+    cleaned = []
+
+    for item in raw_values:
+        item_str = str(item).strip()
+
+        if item_str and item_str.lower() not in ["nan", "none", "n/a"]:
+            cleaned.append(item_str)
+
+    return list(dict.fromkeys(cleaned))
+
+
+def combine_database_and_community_substitutions(database_substitutions, community_substitutions):
+    """
+    Combines database-based and community-based substitution suggestions.
+
+    Main behavior:
+    1. Groups suggestions by the same recipe ingredient.
+    2. Merges repeated possible_substitutes from database rows.
+    3. Adds community-submitted substitutes into the same ingredient card.
+    4. Does not create a separate community section.
+    """
+
+    combined = {}
+
+    def get_or_create_card(ingredient_name):
+        ingredient_display = str(ingredient_name).strip() if ingredient_name else "Unknown Ingredient"
+        ingredient_key = normalize_text(ingredient_display) or ingredient_display.lower()
+
+        if ingredient_key not in combined:
+            combined[ingredient_key] = {
+                "recipe_ingredient": ingredient_display,
+                "database_substitutes": [],
+                "community_substitutes": [],
+                "related_info": []
+            }
+
+        return combined[ingredient_key]
+
+    # -----------------------------
+    # Add database substitutions
+    # -----------------------------
+    if database_substitutions is not None and not database_substitutions.empty:
+        for _, row in database_substitutions.iterrows():
+            ingredient_name = row.get("recipe_ingredient", None)
+
+            if not ingredient_name:
+                for possible_col in [
+                    "ingredient_name",
+                    "ingredient",
+                    "trigger_ingredient",
+                    "ingredient_normalized"
+                ]:
+                    if possible_col in database_substitutions.columns:
+                        ingredient_name = row.get(possible_col)
+                        break
+
+            card = get_or_create_card(ingredient_name)
+
+            # Merge all substitute-related columns
+            for col in database_substitutions.columns:
+                if "substitute" in col.lower():
+                    substitutes = split_substitute_values(row.get(col))
+
+                    for sub in substitutes:
+                        if sub not in card["database_substitutes"]:
+                            card["database_substitutes"].append(sub)
+
+            # Save related allergy/type info if available
+            for info_col in ["allergy_type", "allergen_type", "allergy"]:
+                if info_col in database_substitutions.columns:
+                    info_value = row.get(info_col)
+
+                    if info_value is not None:
+                        info_value = str(info_value).strip()
+
+                        if info_value and info_value.lower() not in ["nan", "none", "n/a"]:
+                            if info_value not in card["related_info"]:
+                                card["related_info"].append(info_value)
+
+    # -----------------------------
+    # Add community substitutions
+    # -----------------------------
+    if community_substitutions is not None and not community_substitutions.empty:
+        for _, row in community_substitutions.iterrows():
+            ingredient_name = row.get("matched_recipe_ingredient", None)
+
+            if not ingredient_name:
+                ingredient_name = row.get("original_ingredient", None)
+
+            card = get_or_create_card(ingredient_name)
+
+            substitute = row.get("substitute_ingredient", None)
+            amount = row.get("amount_grams", None)
+
+            if substitute is not None:
+                substitute = str(substitute).strip()
+
+                if substitute and substitute.lower() not in ["nan", "none", "n/a"]:
+                    if amount is not None:
+                        try:
+                            amount_text = f"{float(amount):.1f}g"
+                            community_text = f"{substitute} ({amount_text})"
+                        except:
+                            community_text = substitute
+                    else:
+                        community_text = substitute
+
+                    if community_text not in card["community_substitutes"]:
+                        card["community_substitutes"].append(community_text)
+
+    # Only keep cards that actually have suggestions
+    final_cards = []
+
+    for card in combined.values():
+        if card["database_substitutes"] or card["community_substitutes"]:
+            final_cards.append(card)
+
+    return final_cards
 
 # ============================================================
 # MACHINE LEARNING RECOMMENDATION
@@ -1397,47 +1547,48 @@ if "selected_recipe" in st.session_state:
         st.info("No allergy selected. Allergy filtering is skipped.")
 
     # -----------------------------
-    # 2. Database-based substitutions
+    # 2. Combined database + community substitutions
     # -----------------------------
 
-    section_card(
-        "Database-Based Substitution Suggestions",
-        "These suggestions come from the project's structured allergy/substitution database, not from the LLM."
+    combined_substitutions = combine_database_and_community_substitutions(
+        database_substitutions=database_substitutions,
+        community_substitutions=community_substitutions
     )
 
-    if not database_substitutions.empty:
-        for i, row in database_substitutions.iterrows():
+    st.markdown("""
+    <div class="section-card">
+        <h2>Database-Based Substitution Suggestions</h2>
+        <p class="info-note">
+            These suggestions combine the project's structured substitution database 
+            and any matching community-submitted substitution examples.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if combined_substitutions:
+        for i, item in enumerate(combined_substitutions, start=1):
             with st.container(border=True):
-                st.markdown(f"#### Database Suggestion {i + 1}")
+                st.markdown(f"#### Suggestion {i}: {item['recipe_ingredient']}")
 
-                if "recipe_ingredient" in row:
-                    st.write(
-                        "**Recipe Ingredient:**",
-                        row.get("recipe_ingredient", "N/A")
-                    )
+                if item["related_info"]:
+                    st.write("**Related Allergy / Preference Context:**")
+                    st.write(", ".join(item["related_info"]))
 
-                for col in database_substitutions.columns:
-                    if col != "recipe_ingredient":
-                        st.write(f"**{col}:**", row.get(col, "N/A"))
+                if item["database_substitutes"]:
+                    st.write("**Database Possible Substitutes:**")
+                    for sub in item["database_substitutes"]:
+                        st.write(f"- {sub}")
+
+                if item["community_substitutes"]:
+                    st.write("**Community Submitted Substitutes:**")
+                    for sub in item["community_substitutes"]:
+                        st.write(f"- {sub}")
+
     else:
         st.info(
-            "No database-based substitution matched the selected allergy, diet, or nutrition preferences. "
-            "This does not mean there is no possible substitute; it only means the current reference table does not contain a matched rule."
+            "No database-based or community-based substitution matched the selected recipe and preferences. "
+            "You can still use the LLM section below to generate customized suggestions."
         )
-
-    # -----------------------------
-    # 3. Community-based substitutions
-    # -----------------------------
-
-    section_card(
-        "Community-Based Substitution Suggestions",
-        "These suggestions come from previous user-submitted substitution experiences stored in the backend."
-    )
-
-    if not community_substitutions.empty:
-        st.dataframe(community_substitutions, use_container_width=True)
-    else:
-        st.info("No community substitution records matched this recipe yet.")
 
     # ========================================================
     # 4. LLM substitution section
