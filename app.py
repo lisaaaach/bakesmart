@@ -1879,35 +1879,40 @@ st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
 
 st.subheader("Suggested Ingredient Changes")
 
-    if combined_substitutions:
-        for i, item in enumerate(combined_substitutions, start=1):
-            with st.container(border=True):
-                ingredient_name = display_value(item.get("recipe_ingredient"), "Unknown Ingredient")
-                st.markdown(f"#### {i}. {ingredient_name.title()}")
+# -----------------------------
+# Ingredient substitution plan
+# -----------------------------
 
-                reason = summarize_suggestion_reason(
-                    item,
-                    selected_allergies=selected_allergies,
-                    selected_diets=selected_diets,
-                    selected_nutrition_goals=selected_nutrition_goals
-                )
-                st.write(f"**Why this may need adjustment:** {reason}")
+st.subheader("Suggested Ingredient Changes")
 
-                if item.get("database_substitutes"):
-                    st.write("**Try these substitutes:**")
-                    substitute_text = ", ".join(item["database_substitutes"][:8])
-                    st.write(substitute_text)
+if combined_substitutions:
+    for i, item in enumerate(combined_substitutions, start=1):
+        with st.container(border=True):
+            ingredient_name = display_value(item.get("recipe_ingredient"), "Unknown Ingredient")
+            st.markdown(f"#### {i}. {ingredient_name.title()}")
 
-                if item.get("community_substitutes"):
-                    st.write("**Community examples:**")
-                    for sub in item["community_substitutes"][:5]:
-                        st.write(f"- {sub}")
-    else:
-        st.info(
-            "No structured or fallback substitution matched this recipe. "
-            "You can still generate AI-enhanced suggestions below if an API key is available."
-        )
+            reason = summarize_suggestion_reason(
+                item,
+                selected_allergies=selected_allergies,
+                selected_diets=selected_diets,
+                selected_nutrition_goals=selected_nutrition_goals
+            )
+            st.write(f"**Why this may need adjustment:** {reason}")
 
+            if item.get("database_substitutes"):
+                st.write("**Try these substitutes:**")
+                substitute_text = ", ".join(item["database_substitutes"][:8])
+                st.write(substitute_text)
+
+            if item.get("community_substitutes"):
+                st.write("**Community examples:**")
+                for sub in item["community_substitutes"][:5]:
+                    st.write(f"- {sub}")
+else:
+    st.info(
+        "No structured or fallback substitution matched this recipe. "
+        "You can still generate AI-enhanced suggestions below if an API key is available."
+    )
     # -----------------------------
     # AI-enhanced suggestions
     # -----------------------------
