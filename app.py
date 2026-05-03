@@ -914,7 +914,16 @@ def merge_llm_suggestions_with_plan(combined_substitutions, llm_substitutions):
 # MACHINE LEARNING RECOMMENDATION
 # ============================================================
 
-def get_ml_recipe_recommendation(conn, recipe_id, recipe_name=None, top_n=3):
+def get_ml_recipe_recommendation(conn, recipe_id, recipe_name=None, recipe_ingredients=None, top_n=3):
+    """
+    Find ML recipe type and similar recipes.
+
+    Match order:
+    1. Match by recipe ID
+    2. Match by recipe name
+    3. If not found, assign the recipe to the closest ML recipe by ingredient overlap
+    """
+
     try:
         df_ml_all = pd.read_sql(f"""
             SELECT id, recipe_name, cluster, cluster_name, pca_1, pca_2
@@ -938,22 +947,65 @@ def get_ml_recipe_recommendation(conn, recipe_id, recipe_name=None, top_n=3):
     recipe_id_str = str(recipe_id)
     recipe_name_norm = normalize_text(recipe_name)
 
-    # 1. First try matching by recipe ID
     selected_ml = df_ml_all[df_ml_all["id_str"] == recipe_id_str]
 
-    # 2. If ID does not match, try matching by recipe name
     if selected_ml.empty and recipe_name_norm:
         selected_ml = df_ml_all[df_ml_all["recipe_name_norm"] == recipe_name_norm]
 
-    # 3. If exact name does not match, try partial name matching
     if selected_ml.empty and recipe_name_norm:
         selected_ml = df_ml_all[
             df_ml_all["recipe_name_norm"].apply(
-                lambda x: (
-                    recipe_name_norm in x or x in recipe_name_norm
-                ) if isinstance(x, str) else False
+                lambda x: (recipe_name_norm in x or x in recipe_name_norm) if isinstance(x, str) else False
             )
         ]
+
+    match_note = "direct_match"
+
+    # Fallback: selected recipe was not in the ML table.
+    # Use ingredient overlap against ML recipe names found in the master recipe table.
+    if selected_ml.empty and recipe_ingredients:
+        recipe_ingredients_norm = set(normalize_ingredient_list(recipe_ingredients))
+
+        ml_with_ingredients = df_ml_all.merge(
+            recipes_master[["recipe_id", "recipe_name", "ingredients_clean"]],
+            left_on="id_str",
+            right_on=recipes_master["recipe_id"].astype(str),
+            how="left",
+            suffixes=("", "_master")
+        )
+
+        # If ID merge fails, try recipe name merge
+        missing_ing = ml_with_ingredients["ingredients_clean"].isna()
+        if missing_ing.any():
+            name_merge = df_ml_all.merge(
+                recipes_master[["recipe_name", "ingredients_clean"]],
+                on="recipe_name",
+                how="left"
+            )
+            ml_with_ingredients["ingredients_clean"] = ml_with_ingredients["ingredients_clean"].combine_first(
+                name_merge["ingredients_clean"]
+            )
+
+        def ingredient_overlap_score(ing_list):
+            if not isinstance(ing_list, list):
+                return 0
+            ml_set = set(normalize_ingredient_list(ing_list))
+            if not ml_set or not recipe_ingredients_norm:
+                return 0
+            return len(recipe_ingredients_norm.intersection(ml_set)) / len(recipe_ingredients_norm.union(ml_set))
+
+        ml_with_ingredients["ingredient_similarity"] = ml_with_ingredients["ingredients_clean"].apply(
+            ingredient_overlap_score
+        )
+
+        ml_with_ingredients = ml_with_ingredients.sort_values(
+            "ingredient_similarity",
+            ascending=False
+        )
+
+        if not ml_with_ingredients.empty and ml_with_ingredients.iloc[0]["ingredient_similarity"] > 0:
+            selected_ml = ml_with_ingredients.head(1)
+            match_note = "ingredient_similarity_fallback"
 
     if selected_ml.empty:
         return {
@@ -965,15 +1017,15 @@ def get_ml_recipe_recommendation(conn, recipe_id, recipe_name=None, top_n=3):
     cluster_id = selected_row["cluster"]
     cluster_name = selected_row["cluster_name"]
 
-    # First: find recipes in the same cluster
+    selected_ml_id = str(selected_row["id"])
+
     similar_recipes = df_ml_all[
         (df_ml_all["cluster"] == cluster_id) &
-        (df_ml_all["id_str"] != str(selected_row["id"]))
+        (df_ml_all["id_str"] != selected_ml_id)
     ].copy()
 
     if similar_recipes.empty:
-        # Fallback: use PCA distance to find closest recipes overall
-        df_candidates = df_ml_all[df_ml_all["id_str"] != str(selected_row["id"])].copy()
+        df_candidates = df_ml_all[df_ml_all["id_str"] != selected_ml_id].copy()
 
         df_candidates["pca_distance"] = (
             (df_candidates["pca_1"] - selected_row["pca_1"]) ** 2 +
@@ -990,7 +1042,8 @@ def get_ml_recipe_recommendation(conn, recipe_id, recipe_name=None, top_n=3):
 
     return {
         "cluster_name": cluster_name,
-        "similar_recipes": similar_recipes[["recipe_name", "cluster_name"]]
+        "similar_recipes": similar_recipes[["recipe_name", "cluster_name"]],
+        "match_note": match_note
     }
 
 
@@ -1787,6 +1840,7 @@ if "selected_recipe" in st.session_state:
     conn,
     selected_id,
     recipe_name=selected_recipe.get("recipe_name"),
+    recipe_ingredients=selected_recipe.get("ingredients_clean", []),
     top_n=3
 )
 
