@@ -914,7 +914,7 @@ def merge_llm_suggestions_with_plan(combined_substitutions, llm_substitutions):
 # MACHINE LEARNING RECOMMENDATION
 # ============================================================
 
-def get_ml_recipe_recommendation(conn, recipe_id, top_n=3):
+def get_ml_recipe_recommendation(conn, recipe_id, recipe_name=None, top_n=3):
     try:
         df_ml_all = pd.read_sql(f"""
             SELECT id, recipe_name, cluster, cluster_name, pca_1, pca_2
@@ -933,9 +933,27 @@ def get_ml_recipe_recommendation(conn, recipe_id, top_n=3):
         }
 
     df_ml_all["id_str"] = df_ml_all["id"].astype(str)
-    recipe_id_str = str(recipe_id)
+    df_ml_all["recipe_name_norm"] = df_ml_all["recipe_name"].apply(normalize_text)
 
+    recipe_id_str = str(recipe_id)
+    recipe_name_norm = normalize_text(recipe_name)
+
+    # 1. First try matching by recipe ID
     selected_ml = df_ml_all[df_ml_all["id_str"] == recipe_id_str]
+
+    # 2. If ID does not match, try matching by recipe name
+    if selected_ml.empty and recipe_name_norm:
+        selected_ml = df_ml_all[df_ml_all["recipe_name_norm"] == recipe_name_norm]
+
+    # 3. If exact name does not match, try partial name matching
+    if selected_ml.empty and recipe_name_norm:
+        selected_ml = df_ml_all[
+            df_ml_all["recipe_name_norm"].apply(
+                lambda x: (
+                    recipe_name_norm in x or x in recipe_name_norm
+                ) if isinstance(x, str) else False
+            )
+        ]
 
     if selected_ml.empty:
         return {
@@ -947,13 +965,16 @@ def get_ml_recipe_recommendation(conn, recipe_id, top_n=3):
     cluster_id = selected_row["cluster"]
     cluster_name = selected_row["cluster_name"]
 
+    # First: find recipes in the same cluster
     similar_recipes = df_ml_all[
         (df_ml_all["cluster"] == cluster_id) &
-        (df_ml_all["id_str"] != recipe_id_str)
+        (df_ml_all["id_str"] != str(selected_row["id"]))
     ].copy()
 
     if similar_recipes.empty:
-        df_candidates = df_ml_all[df_ml_all["id_str"] != recipe_id_str].copy()
+        # Fallback: use PCA distance to find closest recipes overall
+        df_candidates = df_ml_all[df_ml_all["id_str"] != str(selected_row["id"])].copy()
+
         df_candidates["pca_distance"] = (
             (df_candidates["pca_1"] - selected_row["pca_1"]) ** 2 +
             (df_candidates["pca_2"] - selected_row["pca_2"]) ** 2
@@ -1763,10 +1784,11 @@ if "selected_recipe" in st.session_state:
         )
 
     ml_result = get_ml_recipe_recommendation(
-        conn,
-        selected_id,
-        top_n=3
-    )
+    conn,
+    selected_id,
+    recipe_name=selected_recipe.get("recipe_name"),
+    top_n=3
+)
 
     section_card(
         "Customized Recipe Plan",
