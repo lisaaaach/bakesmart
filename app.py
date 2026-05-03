@@ -1848,7 +1848,8 @@ if "selected_recipe" in st.session_state:
     cluster_label = ml_result.get("cluster_name") if ml_result else None
     cluster_label_display = display_value(cluster_label, "Not available")
 
-    st.markdown(f"""
+    st.markdown(
+    f"""
     <div class="metric-row">
         <div class="custom-metric-card">
             <div class="custom-metric-label">Preferences</div>
@@ -1865,7 +1866,9 @@ if "selected_recipe" in st.session_state:
             <div class="custom-metric-value recipe-type-value">{cluster_label_display}</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+    )
 
     # -----------------------------
     # Ingredient substitution plan
