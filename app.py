@@ -1432,12 +1432,6 @@ details {
     font-size: 16px;
     line-height: 1.6;
 }
-.metric-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1.4fr;
-    gap: 24px;
-    margin: 24px 0 32px 0;
-}
 
 .custom-metric-card {
     background: rgba(255, 255, 255, 0.68);
@@ -1846,28 +1840,35 @@ if "selected_recipe" in st.session_state:
         st.info("Select allergy, diet, or nutrition preferences above to generate a targeted customization plan.")
 
     cluster_label = ml_result.get("cluster_name") if ml_result else None
-    cluster_label_display = display_value(cluster_label, "Not available")
+cluster_label_display = display_value(cluster_label, "Not available")
 
+metric_col_1, metric_col_2, metric_col_3 = st.columns([1, 1, 1.6])
+
+with metric_col_1:
     st.markdown(
-    f"""
-    <div class="metric-row">
-        <div class="custom-metric-card">
-            <div class="custom-metric-label">Preferences</div>
-            <div class="custom-metric-value">{len(selected_preferences)}</div>
-        </div>
+        f'<div class="custom-metric-card">'
+        f'<div class="custom-metric-label">Preferences</div>'
+        f'<div class="custom-metric-value">{len(selected_preferences)}</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
-        <div class="custom-metric-card">
-            <div class="custom-metric-label">Ingredients to Review</div>
-            <div class="custom-metric-value">{len(combined_substitutions)}</div>
-        </div>
+with metric_col_2:
+    st.markdown(
+        f'<div class="custom-metric-card">'
+        f'<div class="custom-metric-label">Ingredients to Review</div>'
+        f'<div class="custom-metric-value">{len(combined_substitutions)}</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
-        <div class="custom-metric-card">
-            <div class="custom-metric-label">Recipe Type</div>
-            <div class="custom-metric-value recipe-type-value">{cluster_label_display}</div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True
+with metric_col_3:
+    st.markdown(
+        f'<div class="custom-metric-card">'
+        f'<div class="custom-metric-label">Recipe Type</div>'
+        f'<div class="custom-metric-value recipe-type-value">{cluster_label_display}</div>'
+        f'</div>',
+        unsafe_allow_html=True
     )
 
     # -----------------------------
