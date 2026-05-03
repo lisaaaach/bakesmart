@@ -1871,11 +1871,13 @@ with metric_col_3:
         unsafe_allow_html=True
     )
 
-    # -----------------------------
-    # Ingredient substitution plan
-    # -----------------------------
+st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
 
-    st.subheader("Suggested Ingredient Changes")
+# -----------------------------
+# Ingredient substitution plan
+# -----------------------------
+
+st.subheader("Suggested Ingredient Changes")
 
     if combined_substitutions:
         for i, item in enumerate(combined_substitutions, start=1):
