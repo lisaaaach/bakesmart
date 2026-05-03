@@ -702,6 +702,143 @@ def combine_database_and_community_substitutions(database_substitutions, communi
 
     return final_cards
 
+def get_fallback_substitution_plan(
+    recipe_ingredients,
+    selected_allergies=None,
+    selected_diets=None,
+    selected_nutrition_goals=None
+):
+    """
+    Rule-based fallback suggestions.
+    This makes sure the app can still generate a useful customization plan
+    even when database/community/LLM results are unavailable.
+    """
+
+    selected_allergies = selected_allergies or []
+    selected_diets = selected_diets or []
+    selected_nutrition_goals = selected_nutrition_goals or []
+
+    preferences = [
+        normalize_text(x)
+        for x in selected_allergies + selected_diets + selected_nutrition_goals
+        if normalize_text(x)
+    ]
+
+    if not preferences:
+        return []
+
+    ingredients = recipe_ingredients or []
+    cards = {}
+
+    def add_card(ingredient, reason, substitutes):
+        key = normalize_text(ingredient) or ingredient.lower()
+
+        if key not in cards:
+            cards[key] = {
+                "recipe_ingredient": ingredient,
+                "database_substitutes": [],
+                "community_substitutes": [],
+                "related_info": []
+            }
+
+        if reason not in cards[key]["related_info"]:
+            cards[key]["related_info"].append(reason)
+
+        for sub in substitutes:
+            if sub not in cards[key]["database_substitutes"]:
+                cards[key]["database_substitutes"].append(sub)
+
+    for ingredient in ingredients:
+        ing = normalize_text(ingredient)
+
+        if not ing:
+            continue
+
+        # Dairy / vegan substitutions
+        if (
+            "dairy" in preferences
+            or "dairy free" in preferences
+            or "vegan" in preferences
+        ):
+            if any(x in ing for x in ["milk", "butter", "cream", "cheese", "yogurt"]):
+                if "milk" in ing:
+                    add_card(
+                        ingredient,
+                        "dairy-free / vegan preference",
+                        ["oat milk", "soy milk", "almond milk", "coconut milk"]
+                    )
+                elif "butter" in ing:
+                    add_card(
+                        ingredient,
+                        "dairy-free / vegan preference",
+                        ["vegan butter", "coconut oil", "margarine"]
+                    )
+                elif any(x in ing for x in ["cream", "cheese", "yogurt"]):
+                    add_card(
+                        ingredient,
+                        "dairy-free / vegan preference",
+                        ["coconut cream", "cashew cream", "plant-based cream cheese"]
+                    )
+
+        # Egg / vegan substitutions
+        if (
+            "egg" in preferences
+            or "egg free" in preferences
+            or "vegan" in preferences
+        ):
+            if "egg" in ing:
+                add_card(
+                    ingredient,
+                    "egg-free / vegan preference",
+                    ["flax egg", "chia egg", "applesauce", "mashed banana"]
+                )
+
+        # Gluten substitutions
+        if "gluten" in preferences or "gluten free" in preferences:
+            if any(x in ing for x in ["flour", "wheat"]):
+                add_card(
+                    ingredient,
+                    "gluten-free preference",
+                    ["gluten-free flour blend", "almond flour", "oat flour"]
+                )
+
+        # Nut substitutions
+        if "peanut" in preferences or "tree nuts" in preferences or "nut free" in preferences:
+            if any(x in ing for x in ["peanut", "almond", "walnut", "pecan", "hazelnut"]):
+                add_card(
+                    ingredient,
+                    "nut-free preference",
+                    ["sunflower seed butter", "pumpkin seeds", "rolled oats"]
+                )
+
+        # Low sugar substitutions
+        if "low sugar" in preferences:
+            if any(x in ing for x in ["sugar", "brown sugar", "powdered sugar", "honey", "syrup"]):
+                add_card(
+                    ingredient,
+                    "low-sugar nutrition goal",
+                    ["monk fruit sweetener", "stevia", "erythritol", "reduced sugar amount"]
+                )
+
+        # Low fat substitutions
+        if "low fat" in preferences:
+            if any(x in ing for x in ["butter", "oil", "cream"]):
+                add_card(
+                    ingredient,
+                    "low-fat nutrition goal",
+                    ["applesauce", "Greek yogurt", "reduced amount of oil"]
+                )
+
+        # High protein substitutions
+        if "high protein" in preferences:
+            if any(x in ing for x in ["flour", "milk", "yogurt"]):
+                add_card(
+                    ingredient,
+                    "high-protein nutrition goal",
+                    ["protein powder", "Greek yogurt", "high-protein milk"]
+                )
+
+    return list(cards.values())
 
 def build_selected_preferences(selected_allergies=None, selected_diets=None, selected_nutrition_goals=None):
     """
@@ -1618,6 +1755,15 @@ if "selected_recipe" in st.session_state:
         database_substitutions=database_substitutions,
         community_substitutions=community_substitutions
     )
+    
+    # Fallback: if database/community did not match, use rule-based suggestions
+    if not combined_substitutions:
+        combined_substitutions = get_fallback_substitution_plan(
+            recipe_ingredients=selected_recipe.get("ingredients_clean", []),
+            selected_allergies=selected_allergies,
+            selected_diets=selected_diets,
+            selected_nutrition_goals=selected_nutrition_goals
+        )
 
     ml_result = get_ml_recipe_recommendation(
         conn,
@@ -1676,8 +1822,8 @@ if "selected_recipe" in st.session_state:
                         st.write(f"- {sub}")
     else:
         st.info(
-            "No structured database/community substitution matched this recipe and the selected preferences. "
-            "You can still generate AI-enhanced suggestions below."
+            "No structured or fallback substitution matched this recipe. "
+            "You can still generate AI-enhanced suggestions below if an API key is available."
         )
 
     # -----------------------------
