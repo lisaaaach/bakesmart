@@ -1459,9 +1459,6 @@ recipes_spoon = standardize_spoon(df_spoon)
 recipes_themealdb = standardize_themealdb(df_themealdb)
 recipes_master = pd.concat([recipes_spoon, recipes_themealdb], ignore_index=True)
 
-st.sidebar.header("Project Data")
-st.sidebar.write(f"Total recipes loaded: {len(recipes_master)}")
-
 # ============================================================
 # INPUT SECTION — ORIGINAL NOTEBOOK STYLE FLOW
 # ============================================================
