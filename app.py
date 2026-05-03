@@ -1432,6 +1432,41 @@ details {
     font-size: 16px;
     line-height: 1.6;
 }
+.metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.4fr;
+    gap: 24px;
+    margin: 24px 0 32px 0;
+}
+
+.custom-metric-card {
+    background: rgba(255, 255, 255, 0.68);
+    border: 1px solid #F2D4C4;
+    border-radius: 24px;
+    padding: 24px 28px;
+    box-shadow: 0 10px 28px rgba(23, 33, 60, 0.06);
+}
+
+.custom-metric-label {
+    font-size: 18px;
+    font-weight: 650;
+    color: #3A3A46;
+    margin-bottom: 10px;
+}
+
+.custom-metric-value {
+    font-size: 46px;
+    font-weight: 750;
+    color: #2E2E3A;
+    line-height: 1.1;
+}
+
+.recipe-type-value {
+    font-size: 34px;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: break-word;
+}
 </style>
 """,
     unsafe_allow_html=True
@@ -1810,14 +1845,27 @@ if "selected_recipe" in st.session_state:
     else:
         st.info("Select allergy, diet, or nutrition preferences above to generate a targeted customization plan.")
 
-    summary_col_1, summary_col_2, summary_col_3 = st.columns(3)
-    with summary_col_1:
-        st.metric("Preferences", len(selected_preferences))
-    with summary_col_2:
-        st.metric("Ingredients to Review", len(combined_substitutions))
-    with summary_col_3:
-        cluster_label = ml_result.get("cluster_name") if ml_result else None
-        st.metric("Recipe Type", display_value(cluster_label, "Not available"))
+    cluster_label = ml_result.get("cluster_name") if ml_result else None
+    cluster_label_display = display_value(cluster_label, "Not available")
+
+    st.markdown(f"""
+    <div class="metric-row">
+        <div class="custom-metric-card">
+            <div class="custom-metric-label">Preferences</div>
+            <div class="custom-metric-value">{len(selected_preferences)}</div>
+        </div>
+
+        <div class="custom-metric-card">
+            <div class="custom-metric-label">Ingredients to Review</div>
+            <div class="custom-metric-value">{len(combined_substitutions)}</div>
+        </div>
+
+        <div class="custom-metric-card">
+            <div class="custom-metric-label">Recipe Type</div>
+            <div class="custom-metric-value recipe-type-value">{cluster_label_display}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # -----------------------------
     # Ingredient substitution plan
