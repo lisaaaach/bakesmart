@@ -1432,35 +1432,6 @@ details {
     font-size: 16px;
     line-height: 1.6;
 }
-
-.custom-metric-card {
-    background: rgba(255, 255, 255, 0.68);
-    border: 1px solid #F2D4C4;
-    border-radius: 24px;
-    padding: 24px 28px;
-    box-shadow: 0 10px 28px rgba(23, 33, 60, 0.06);
-}
-
-.custom-metric-label {
-    font-size: 18px;
-    font-weight: 650;
-    color: #3A3A46;
-    margin-bottom: 10px;
-}
-
-.custom-metric-value {
-    font-size: 46px;
-    font-weight: 750;
-    color: #2E2E3A;
-    line-height: 1.1;
-}
-
-.recipe-type-value {
-    font-size: 34px;
-    white-space: normal;
-    word-break: normal;
-    overflow-wrap: break-word;
-}
 </style>
 """,
     unsafe_allow_html=True
@@ -1839,80 +1810,50 @@ if "selected_recipe" in st.session_state:
     else:
         st.info("Select allergy, diet, or nutrition preferences above to generate a targeted customization plan.")
 
-    cluster_label = ml_result.get("cluster_name") if ml_result else None
-cluster_label_display = display_value(cluster_label, "Not available")
+    summary_col_1, summary_col_2, summary_col_3 = st.columns(3)
+    with summary_col_1:
+        st.metric("Preferences", len(selected_preferences))
+    with summary_col_2:
+        st.metric("Ingredients to Review", len(combined_substitutions))
+    with summary_col_3:
+        cluster_label = ml_result.get("cluster_name") if ml_result else None
+        st.metric("Recipe Type", display_value(cluster_label, "Not available"))
 
-metric_col_1, metric_col_2, metric_col_3 = st.columns([1, 1, 1.6])
+    # -----------------------------
+    # Ingredient substitution plan
+    # -----------------------------
 
-with metric_col_1:
-    st.markdown(
-        f'<div class="custom-metric-card">'
-        f'<div class="custom-metric-label">Preferences</div>'
-        f'<div class="custom-metric-value">{len(selected_preferences)}</div>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
+    st.subheader("Suggested Ingredient Changes")
 
-with metric_col_2:
-    st.markdown(
-        f'<div class="custom-metric-card">'
-        f'<div class="custom-metric-label">Ingredients to Review</div>'
-        f'<div class="custom-metric-value">{len(combined_substitutions)}</div>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
+    if combined_substitutions:
+        for i, item in enumerate(combined_substitutions, start=1):
+            with st.container(border=True):
+                ingredient_name = display_value(item.get("recipe_ingredient"), "Unknown Ingredient")
+                st.markdown(f"#### {i}. {ingredient_name.title()}")
 
-with metric_col_3:
-    st.markdown(
-        f'<div class="custom-metric-card">'
-        f'<div class="custom-metric-label">Recipe Type</div>'
-        f'<div class="custom-metric-value recipe-type-value">{cluster_label_display}</div>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
+                reason = summarize_suggestion_reason(
+                    item,
+                    selected_allergies=selected_allergies,
+                    selected_diets=selected_diets,
+                    selected_nutrition_goals=selected_nutrition_goals
+                )
+                st.write(f"**Why this may need adjustment:** {reason}")
 
-st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+                if item.get("database_substitutes"):
+                    st.write("**Try these substitutes:**")
+                    substitute_text = ", ".join(item["database_substitutes"][:8])
+                    st.write(substitute_text)
 
-# -----------------------------
-# Ingredient substitution plan
-# -----------------------------
+                if item.get("community_substitutes"):
+                    st.write("**Community examples:**")
+                    for sub in item["community_substitutes"][:5]:
+                        st.write(f"- {sub}")
+    else:
+        st.info(
+            "No structured or fallback substitution matched this recipe. "
+            "You can still generate AI-enhanced suggestions below if an API key is available."
+        )
 
-st.subheader("Suggested Ingredient Changes")
-
-# -----------------------------
-# Ingredient substitution plan
-# -----------------------------
-
-st.subheader("Suggested Ingredient Changes")
-
-if combined_substitutions:
-    for i, item in enumerate(combined_substitutions, start=1):
-        with st.container(border=True):
-            ingredient_name = display_value(item.get("recipe_ingredient"), "Unknown Ingredient")
-            st.markdown(f"#### {i}. {ingredient_name.title()}")
-
-            reason = summarize_suggestion_reason(
-                item,
-                selected_allergies=selected_allergies,
-                selected_diets=selected_diets,
-                selected_nutrition_goals=selected_nutrition_goals
-            )
-            st.write(f"**Why this may need adjustment:** {reason}")
-
-            if item.get("database_substitutes"):
-                st.write("**Try these substitutes:**")
-                substitute_text = ", ".join(item["database_substitutes"][:8])
-                st.write(substitute_text)
-
-            if item.get("community_substitutes"):
-                st.write("**Community examples:**")
-                for sub in item["community_substitutes"][:5]:
-                    st.write(f"- {sub}")
-else:
-    st.info(
-        "No structured or fallback substitution matched this recipe. "
-        "You can still generate AI-enhanced suggestions below if an API key is available."
-    )
     # -----------------------------
     # AI-enhanced suggestions
     # -----------------------------
