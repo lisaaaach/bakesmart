@@ -1682,11 +1682,11 @@ if "top_matches" in st.session_state:
             
                 matched_ingredients = row.get("matched_ingredients", [])
             
-                st.write("**All Ingredients:**")
-                render_ingredients_with_highlights(
-                    row.get("ingredients_combined"),
-                    matched_ingredients
-                )
+                with st.expander("All Ingredients", expanded=False):
+                    render_ingredients_with_highlights(
+                        row.get("ingredients_combined"),
+                        matched_ingredients
+                    )
             
                 st.write("**Nutrients:**")
                 st.write(format_nutrients(row.get("nutrients")))
@@ -1769,14 +1769,17 @@ if "selected_recipe" in st.session_state:
     
             matched_ingredients = selected_recipe.get("matched_ingredients", [])
     
-            st.write("**All Ingredients:**")
-            render_ingredients_with_highlights(
-                selected_recipe.get("ingredients_combined"),
-                matched_ingredients
-            )
+            with st.expander("All Ingredients", expanded=True):
+                render_ingredients_with_highlights(
+                    selected_recipe.get("ingredients_combined"),
+                    matched_ingredients
+                )
     
             st.write("**Nutrients:**")
             st.write(format_nutrients(selected_recipe.get("nutrients")))
+    
+            with st.expander("Baking Steps", expanded=True):
+                st.write(display_value(selected_recipe.get("instructions")))
 
     # ========================================================
     # CUSTOMIZATION AFTER RECIPE SELECTION
