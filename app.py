@@ -1672,8 +1672,21 @@ extra_ingredients = [
 user_ingredients = selected_common_ingredients + extra_ingredients
 
 if user_ingredients:
-    section_card("Your Selected Ingredients", level=3)
-    render_badges(user_ingredients)
+    selected_ingredients_html = "".join(
+        [f'<span class="badge">{html.escape(display_value(ing))}</span>' for ing in user_ingredients]
+    )
+
+    st.markdown(
+        f"""
+        <div class="section-card" style="padding: 24px 30px;">
+            <h3 style="margin-bottom: 16px;">Your Selected Ingredients</h3>
+            <div>
+                {selected_ingredients_html}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ============================================================
 # RECIPE RECOMMENDATION — RECIPES FIRST, NO ALLERGY YET
