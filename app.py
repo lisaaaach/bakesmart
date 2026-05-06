@@ -1288,7 +1288,7 @@ st.markdown(
 .block-container {
     padding-top: 2rem;
     padding-bottom: 4rem;
-    max-width: 1200px;
+    max-width: 1350px;
 }
 
 section[data-testid="stSidebar"] {
