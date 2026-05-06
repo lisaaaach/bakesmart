@@ -1448,10 +1448,10 @@ details {
 .section-card {
     background: rgba(255, 255, 255, 0.86);
     border: 1px solid #F2D4C4;
-    border-radius: 28px;
-    padding: 30px;
-    margin: 26px 0;
-    box-shadow: 0 14px 34px rgba(23, 33, 60, 0.08);
+    border-radius: 24px;
+    padding: 22px;
+    margin: 20px 0;
+    box-shadow: 0 10px 26px rgba(23, 33, 60, 0.07);
 }
 
 .recipe-title {
