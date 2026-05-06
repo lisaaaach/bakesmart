@@ -1285,31 +1285,6 @@ st.set_page_config(page_title="WhiskWise", layout="wide")
 
 st.markdown(
     """
-.ingredient-list {
-    margin-top: 8px;
-    padding-left: 20px;
-    line-height: 1.7;
-}
-
-.highlighted-ingredient-row {
-    background: #FFF1E8;
-    color: #B76D3F;
-    border-radius: 12px;
-    padding: 8px 12px;
-    margin-bottom: 6px;
-    font-weight: 700;
-}
-
-.matched-label {
-    display: inline-block;
-    background: #17213C;
-    color: white;
-    border-radius: 999px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 800;
-    margin-left: 8px;
-}
 <style>
 .stApp {
     background: linear-gradient(135deg, #FFF7ED 0%, #FFE4E6 100%);
@@ -1519,6 +1494,32 @@ details {
     color: #44516A;
     font-size: 16px;
     line-height: 1.6;
+}
+
+.ingredient-list {
+    margin-top: 8px;
+    padding-left: 20px;
+    line-height: 1.7;
+}
+
+.highlighted-ingredient-row {
+    background: #FFF1E8;
+    color: #B76D3F;
+    border-radius: 12px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    font-weight: 700;
+}
+
+.matched-label {
+    display: inline-block;
+    background: #17213C;
+    color: white;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 800;
+    margin-left: 8px;
 }
 </style>
 """,
