@@ -219,6 +219,44 @@ def render_ingredients_with_highlights(ingredients_text, matched_ingredients=Non
 
     st.markdown(ingredients_html, unsafe_allow_html=True)
 
+def find_recipe_details_from_master(recipes_master, recipe_name, source_table=None):
+    """
+    Find full recipe details from recipes_master using recipe name and optional source table.
+    Used to render ML similar recipes as smaller recipe cards.
+    """
+
+    if recipes_master is None or recipes_master.empty:
+        return None
+
+    if not has_value(recipe_name):
+        return None
+
+    recipe_name_norm = normalize_text(recipe_name)
+
+    work = recipes_master.copy()
+    work["recipe_name_norm"] = work["recipe_name"].apply(normalize_text)
+
+    matches = work[work["recipe_name_norm"] == recipe_name_norm]
+
+    if source_table and "source_table" in work.columns:
+        source_matches = matches[matches["source_table"] == source_table]
+        if not source_matches.empty:
+            matches = source_matches
+
+    if matches.empty:
+        # fallback: partial name match
+        matches = work[
+            work["recipe_name_norm"].apply(
+                lambda x: (recipe_name_norm in x or x in recipe_name_norm)
+                if isinstance(x, str) else False
+            )
+        ]
+
+    if matches.empty:
+        return None
+
+    return matches.iloc[0].to_dict()
+
 def load_table_if_exists(conn, table_name):
     try:
         df = pd.read_sql(f"SELECT * FROM {table_name}", conn)
@@ -1054,9 +1092,15 @@ def get_ml_recipe_recommendation(conn, recipe_id, source_table=None, recipe_name
     else:
         similar_recipes = similar_recipes.head(top_n)
 
+    keep_cols = []
+
+    for col in ["recipe_id", "id", "recipe_name", "source_table"]:
+        if col in similar_recipes.columns:
+            keep_cols.append(col)
+    
     return {
         "cluster_name": cluster_name,
-        "similar_recipes": similar_recipes[["recipe_name", "cluster_name", "source_table"]]
+        "similar_recipes": similar_recipes[keep_cols]
     }
     
 # ============================================================
@@ -2016,18 +2060,50 @@ if "selected_recipe" in st.session_state:
     st.subheader("Similar Recipes You May Like")
 
     if ml_result and ml_result.get("cluster_name"):
-        st.write(
-            f"These recipes are found using ingredient-based clustering. "
-            f"Selected recipe type: **{ml_result.get('cluster_name')}**."
-        )
-        st.caption(f"ML match method: {ml_result.get('match_note')}")
-
+        st.caption("Recommended using ingredient-based recipe clustering.")
+    
         similar_recipes = ml_result.get("similar_recipes")
-
+    
         if similar_recipes is not None and not similar_recipes.empty:
-            st.dataframe(similar_recipes, use_container_width=True)
+            for i, sim_row in similar_recipes.iterrows():
+                sim_recipe_name = sim_row.get("recipe_name")
+                sim_source_table = sim_row.get("source_table")
+    
+                full_sim_recipe = find_recipe_details_from_master(
+                    recipes_master=recipes_master,
+                    recipe_name=sim_recipe_name,
+                    source_table=sim_source_table
+                )
+    
+                with st.container(border=True):
+                    img_col, text_col = st.columns([0.7, 2.3])
+    
+                    with img_col:
+                        if full_sim_recipe and has_value(full_sim_recipe.get("image_url")):
+                            st.image(
+                                str(full_sim_recipe.get("image_url")),
+                                use_container_width=True
+                            )
+                        else:
+                            st.info("No image")
+    
+                    with text_col:
+                        st.markdown(f"#### {display_value(sim_recipe_name)}")
+    
+                        if full_sim_recipe:
+                            with st.expander("Ingredients", expanded=False):
+                                render_ingredients_with_highlights(
+                                    full_sim_recipe.get("ingredients_combined"),
+                                    matched_ingredients=[]
+                                )
+    
+                            with st.expander("Nutrients", expanded=False):
+                                st.write(format_nutrients(full_sim_recipe.get("nutrients")))
+                        else:
+                            st.caption("Recipe details are not available for this similar recipe.")
+    
         else:
-            st.info("No similar recipes were found in the current cluster table.")
+            st.info("No similar recipes were found.")
     else:
         st.caption("Similar recipe clustering data is not available for this selected recipe.")
 
