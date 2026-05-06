@@ -8,6 +8,7 @@ from datetime import datetime
 import requests
 import os
 import base64
+import html
 
 # ============================================================
 # CONFIG
@@ -160,6 +161,68 @@ def render_badges(items):
         return
     badges = "".join([f'<span class="badge">{display_value(x)}</span>' for x in items])
     st.markdown(badges, unsafe_allow_html=True)
+
+def render_ingredients_with_highlights(ingredients_text, matched_ingredients=None):
+    """
+    Display all ingredients and highlight the ingredients that matched user input.
+    """
+
+    if not has_value(ingredients_text):
+        st.write("N/A")
+        return
+
+    matched_ingredients = matched_ingredients or []
+
+    matched_norm = [
+        normalize_text(x)
+        for x in matched_ingredients
+        if normalize_text(x)
+    ]
+
+    ingredients_text = str(ingredients_text)
+
+    # Most of our ingredient strings use | as separator.
+    # If not, this still displays the full ingredient text safely.
+    ingredient_parts = [
+        part.strip()
+        for part in re.split(r"\s*\|\s*|\n+", ingredients_text)
+        if part.strip()
+    ]
+
+    if not ingredient_parts:
+        ingredient_parts = [ingredients_text]
+
+    html_items = []
+
+    for part in ingredient_parts:
+        part_norm = normalize_text(part) or ""
+        escaped_part = html.escape(part)
+
+        is_matched = any(
+            matched in part_norm or part_norm in matched
+            for matched in matched_norm
+        )
+
+        if is_matched:
+            html_items.append(
+                f"""
+                <li class="highlighted-ingredient-row">
+                    {escaped_part}
+                    <span class="matched-label">matched</span>
+                </li>
+                """
+            )
+        else:
+            html_items.append(f"<li>{escaped_part}</li>")
+
+    st.markdown(
+        f"""
+        <ul class="ingredient-list">
+            {''.join(html_items)}
+        </ul>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 def load_table_if_exists(conn, table_name):
@@ -1222,6 +1285,31 @@ st.set_page_config(page_title="WhiskWise", layout="wide")
 
 st.markdown(
     """
+.ingredient-list {
+    margin-top: 8px;
+    padding-left: 20px;
+    line-height: 1.7;
+}
+
+.highlighted-ingredient-row {
+    background: #FFF1E8;
+    color: #B76D3F;
+    border-radius: 12px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    font-weight: 700;
+}
+
+.matched-label {
+    display: inline-block;
+    background: #17213C;
+    color: white;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 800;
+    margin-left: 8px;
+}
 <style>
 .stApp {
     background: linear-gradient(135deg, #FFF7ED 0%, #FFE4E6 100%);
@@ -1596,25 +1684,17 @@ if "top_matches" in st.session_state:
 
             with info_col:
                 st.markdown(f"### {idx}. {display_value(row.get('recipe_name'))}")
-                st.write(f"**Match Percentage:** {display_value(row.get('match_percentage'))}%")
-                st.write(f"**Source:** {display_value(row.get('source_table'))}")
-
+            
                 matched_ingredients = row.get("matched_ingredients", [])
-
-                if isinstance(matched_ingredients, list) and matched_ingredients:
-                    st.write("**Matched Ingredients:** " + ", ".join(matched_ingredients))
-                else:
-                    st.write("**Matched Ingredients:** N/A")
-
-                with st.expander("View recipe preview"):
-                    st.write("**All Ingredients:**")
-                    st.write(display_value(row.get("ingredients_combined")))
-
-                    st.write("**Nutrients:**")
-                    st.write(format_nutrients(row.get("nutrients")))
-
-                    if has_value(row.get("source_url")):
-                        st.markdown(f"[Open original recipe]({row.get('source_url')})")
+            
+                st.write("**All Ingredients:**")
+                render_ingredients_with_highlights(
+                    row.get("ingredients_combined"),
+                    matched_ingredients
+                )
+            
+                st.write("**Nutrients:**")
+                st.write(format_nutrients(row.get("nutrients")))
 
     section_card(
         "Step 3: Choose One Recipe",
@@ -1658,6 +1738,8 @@ if "top_matches" in st.session_state:
                 "source_table": selected_row.get("source_table")
             }
 
+        selected_recipe["matched_ingredients"] = selected_row.get("matched_ingredients", [])
+        
         st.session_state["selected_recipe"] = selected_recipe
         st.session_state["selected_recipe_id"] = selected_id
         st.session_state["selected_recipe_source"] = selected_source
@@ -1680,28 +1762,26 @@ if "selected_recipe" in st.session_state:
 
     with st.container(border=True):
         detail_img_col, detail_text_col = st.columns([1, 2])
-
+    
         with detail_img_col:
             if has_value(selected_recipe.get("image_url")):
                 st.image(str(selected_recipe.get("image_url")), use_container_width=True)
             else:
                 st.info("No image available")
-
+    
         with detail_text_col:
             st.markdown(f"## {display_value(selected_recipe.get('recipe_name'))}")
-            st.write(f"**Source:** {display_value(selected_recipe.get('source_table'))}")
-
-            if has_value(selected_recipe.get("source_url")):
-                st.markdown(f"[Open original recipe]({selected_recipe.get('source_url')})")
-
-    with st.expander("Ingredients", expanded=True):
-        st.write(display_value(selected_recipe.get("ingredients_combined")))
-
-    with st.expander("Nutrients"):
-        st.write(format_nutrients(selected_recipe.get("nutrients")))
-
-    with st.expander("Instructions"):
-        st.write(display_value(selected_recipe.get("instructions")))
+    
+            matched_ingredients = selected_recipe.get("matched_ingredients", [])
+    
+            st.write("**All Ingredients:**")
+            render_ingredients_with_highlights(
+                selected_recipe.get("ingredients_combined"),
+                matched_ingredients
+            )
+    
+            st.write("**Nutrients:**")
+            st.write(format_nutrients(selected_recipe.get("nutrients")))
 
     # ========================================================
     # CUSTOMIZATION AFTER RECIPE SELECTION
