@@ -165,6 +165,7 @@ def render_badges(items):
 def render_ingredients_with_highlights(ingredients_text, matched_ingredients=None):
     """
     Display all ingredients and highlight the ingredients that matched user input.
+    Avoids indented multi-line HTML so Streamlit does not render it as code.
     """
 
     if not has_value(ingredients_text):
@@ -181,8 +182,7 @@ def render_ingredients_with_highlights(ingredients_text, matched_ingredients=Non
 
     ingredients_text = str(ingredients_text)
 
-    # Most of our ingredient strings use | as separator.
-    # If not, this still displays the full ingredient text safely.
+    # Split common ingredient formats.
     ingredient_parts = [
         part.strip()
         for part in re.split(r"\s*\|\s*|\n+", ingredients_text)
@@ -205,25 +205,19 @@ def render_ingredients_with_highlights(ingredients_text, matched_ingredients=Non
 
         if is_matched:
             html_items.append(
-                f"""
-                <li class="highlighted-ingredient-row">
-                    {escaped_part}
-                    <span class="matched-label">matched</span>
-                </li>
-                """
+                f'<li class="highlighted-ingredient-row">{escaped_part} '
+                f'<span class="matched-label">matched</span></li>'
             )
         else:
             html_items.append(f"<li>{escaped_part}</li>")
 
-    st.markdown(
-        f"""
-        <ul class="ingredient-list">
-            {''.join(html_items)}
-        </ul>
-        """,
-        unsafe_allow_html=True
+    ingredients_html = (
+        '<ul class="ingredient-list">'
+        + "".join(html_items)
+        + "</ul>"
     )
 
+    st.markdown(ingredients_html, unsafe_allow_html=True)
 
 def load_table_if_exists(conn, table_name):
     try:
