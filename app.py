@@ -1492,10 +1492,10 @@ details {
 .section-card {
     background: rgba(255, 255, 255, 0.86);
     border: 1px solid #F2D4C4;
-    border-radius: 24px;
-    padding: 22px;
-    margin: 20px 0;
-    box-shadow: 0 10px 26px rgba(23, 33, 60, 0.07);
+    border-radius: 28px;
+    padding: 30px;
+    margin: 22px 0;
+    box-shadow: 0 14px 34px rgba(23, 33, 60, 0.08);
 }
 
 .recipe-title {
@@ -1532,6 +1532,13 @@ details {
     color: #44516A;
     font-size: 16px;
     line-height: 1.6;
+}
+
+.custom-input-label {
+    color: #17213C;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
 }
 
 .ingredient-list {
@@ -1746,9 +1753,15 @@ if "top_matches" in st.session_state:
         for idx, row in top_matches.iterrows()
     }
 
+    st.markdown(
+        '<p class="custom-input-label">Select a recipe to inspect:</p>',
+        unsafe_allow_html=True
+    )
+    
     selected_label = st.selectbox(
         "Select a recipe to inspect:",
-        list(recipe_options.keys())
+        list(recipe_options.keys()),
+        label_visibility="collapsed"
     )
 
     if st.button("View Recipe Details"):
